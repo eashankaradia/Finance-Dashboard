@@ -1,13 +1,13 @@
 'use client';
 
 import { createBrowserClient } from '@supabase/ssr';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from '../config';
+import type { Db } from '@/lib/supabase/types';
+import { DB_SCHEMA, SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from '../config';
 
-let client: SupabaseClient | null = null;
+let client: Db | null = null;
 
-export function getBrowserSupabase(): SupabaseClient | null {
+export function getBrowserSupabase(): Db | null {
   if (!isSupabaseConfigured) return null;
-  if (!client) client = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  if (!client) client = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema: DB_SCHEMA } });
   return client;
 }

@@ -1,5 +1,5 @@
 import 'server-only';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Db } from '@/lib/supabase/types';
 import type { MarketPrice } from '../types';
 import { isMarketOpen, marketForSymbol } from './hours';
 import { configuredProviders, NotFoundError, providerFor, RateLimitError, type QuoteRequest } from './providers';
@@ -33,7 +33,7 @@ function isFresh(p: MarketPrice, now: number): boolean {
 
 export async function getPrices(
   requests: QuoteRequest[],
-  opts: { force?: boolean; reader?: SupabaseClient | null; writer?: SupabaseClient | null; fetcher?: typeof fetch } = {},
+  opts: { force?: boolean; reader?: Db | null; writer?: Db | null; fetcher?: typeof fetch } = {},
 ): Promise<PricesResponse> {
   const now = Date.now();
   const providers = configuredProviders();

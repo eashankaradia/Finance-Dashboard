@@ -51,15 +51,16 @@ Tests cover decimal safety, flow classification (transfers and trades are not co
 
 ## Database setup (Supabase)
 
-1. Create a free project at [supabase.com](https://supabase.com) (choose an EU/London region).
-2. Apply the schema, either:
+All tables live in their own `finance` Postgres schema, so the app can share a Supabase project with other apps (it currently shares the **My House Dashboard** project) without touching their tables. Sign-in uses that project's existing accounts.
+
+1. Apply the schema (already done for My House Dashboard), either:
    - **SQL editor:** paste `supabase/migrations/20261027000000_initial_schema.sql` into *SQL Editor → New query* and run it; or
    - **CLI:** `npx supabase link --project-ref <ref>` then `npx supabase db push`.
-3. *Authentication → URL Configuration*: set **Site URL** to your app URL (e.g. `https://your-app.vercel.app`) and add `http://localhost:3000/**` and `https://your-app.vercel.app/**` to **Redirect URLs**.
-4. Open the app, choose *Create your account*, confirm the email, sign in.
-5. For a private app, then turn off sign-ups: *Authentication → Sign In / Providers → Email → Allow new users to sign up* = off.
+2. *Project Settings → Data API → Exposed schemas*: add `finance` (keep the schemas already listed). Without this the app can't reach its tables.
+3. *Authentication → URL Configuration*: add `http://localhost:3000/**` and `https://your-app.vercel.app/**` to **Redirect URLs**. Leave the Site URL as it is if another app already uses it.
+4. Open the app and sign in with your existing account for that project (or create one).
 
-The schema creates `profiles`, `accounts`, `account_snapshots`, `assets`, `holdings`, `transactions`, `market_prices`, `fx_rates`, `credit_cards`, `credit_card_bills`, with foreign keys, check constraints and indexes. Row Level Security is enabled on every table: each user can only read and write their own rows, and child rows can only reference the same user's parents (composite foreign keys). `market_prices` is readable by signed-in users and writable only with the service role. A `create_transfer` function writes both legs of a transfer atomically.
+The schema creates `accounts`, `account_snapshots`, `assets`, `holdings`, `transactions`, `market_prices`, `fx_rates`, `credit_cards` and `credit_card_bills`, with foreign keys, check constraints and indexes. Row Level Security is enabled on every table: each user can only read and write their own rows, and child rows can only reference the same user's parents (composite foreign keys). `market_prices` is readable by signed-in users and writable only with the service role. A `create_transfer` function writes both legs of a transfer atomically. The schema doesn't add triggers to `auth.users` or anything to `public`.
 
 There's no SQL seed for real data on purpose: demo data is generated in the browser (`src/lib/data/demo.ts`) so it can never mix with your records.
 

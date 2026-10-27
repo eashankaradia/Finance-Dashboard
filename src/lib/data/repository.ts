@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Db } from '@/lib/supabase/types';
 import type { Dataset, ISODate, MarketPrice } from '../types';
 import { EMPTY_DATASET } from '../types';
 import { buildDemoDataset } from './demo';
@@ -75,7 +75,7 @@ function fail(error: { message: string } | null): void {
 
 export class SupabaseRepository implements Repository {
   mode = 'supabase' as const;
-  constructor(private db: SupabaseClient) {}
+  constructor(private db: Db) {}
 
   async load(): Promise<Dataset> {
     const entries = await Promise.all(

@@ -2,6 +2,9 @@
 -- Apply with `supabase db push` or paste into the Supabase SQL editor.
 --
 -- Design notes
+-- * Everything lives in its own `finance` schema, so the app can share a
+--   Supabase project with other apps without touching their tables.
+--   Add `finance` to Project Settings → Data API → Exposed schemas.
 -- * Every user-owned row carries user_id (defaults to auth.uid()) and Row
 --   Level Security restricts all access to the owner.
 -- * Child tables reference their parent with a composite (id, user_id) key,
@@ -11,11 +14,11 @@
 -- * Valuation and transaction dates are DATE (calendar days, no time zone);
 --   audit timestamps are timestamptz (UTC).
 
-create extension if not exists pgcrypto;
+create schema if not exists finance;
 
 -- ─── Helpers ────────────────────────────────────────────────────────────────
 
-create or replace function public.set_updated_at()
+create or replace function finance.set_updated_at()
 returns trigger
 language plpgsql
 set search_path = ''
@@ -26,40 +29,9 @@ begin
 end;
 $$;
 
--- ─── Profiles ───────────────────────────────────────────────────────────────
-
-create table public.profiles (
-  id            uuid primary key references auth.users (id) on delete cascade,
-  display_name  text,
-  base_currency char(3) not null default 'GBP',
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
-);
-
-create trigger profiles_updated_at before update on public.profiles
-  for each row execute function public.set_updated_at();
-
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  insert into public.profiles (id, display_name)
-  values (new.id, coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1)))
-  on conflict (id) do nothing;
-  return new;
-end;
-$$;
-
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
-
 -- ─── Accounts ───────────────────────────────────────────────────────────────
 
-create table public.accounts (
+create table finance.accounts (
   id             uuid primary key default gen_random_uuid(),
   user_id        uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name           text not null check (length(trim(name)) between 1 and 120),
@@ -80,16 +52,16 @@ create table public.accounts (
   unique (id, user_id)
 );
 
-create index accounts_user_idx on public.accounts (user_id);
-create trigger accounts_updated_at before update on public.accounts
-  for each row execute function public.set_updated_at();
+create index accounts_user_idx on finance.accounts (user_id);
+create trigger accounts_updated_at before update on finance.accounts
+  for each row execute function finance.set_updated_at();
 
 -- ─── Account value snapshots ───────────────────────────────────────────────
 -- Append-only by design: adding a snapshot never overwrites an older one.
 -- Several snapshots on the same date are allowed; the most recently created
 -- one is used for that date.
 
-create table public.account_snapshots (
+create table finance.account_snapshots (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
   account_id uuid not null,
@@ -98,17 +70,17 @@ create table public.account_snapshots (
   notes      text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  foreign key (account_id, user_id) references public.accounts (id, user_id) on delete cascade
+  foreign key (account_id, user_id) references finance.accounts (id, user_id) on delete cascade
 );
 
-create index account_snapshots_account_date_idx on public.account_snapshots (account_id, valued_on);
-create index account_snapshots_user_idx on public.account_snapshots (user_id);
-create trigger account_snapshots_updated_at before update on public.account_snapshots
-  for each row execute function public.set_updated_at();
+create index account_snapshots_account_date_idx on finance.account_snapshots (account_id, valued_on);
+create index account_snapshots_user_idx on finance.account_snapshots (user_id);
+create trigger account_snapshots_updated_at before update on finance.account_snapshots
+  for each row execute function finance.set_updated_at();
 
 -- ─── Assets (instrument metadata, watchlist) ───────────────────────────────
 
-create table public.assets (
+create table finance.assets (
   id              uuid primary key default gen_random_uuid(),
   user_id         uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name            text not null check (length(trim(name)) between 1 and 200),
@@ -128,17 +100,17 @@ create table public.assets (
   unique (id, user_id)
 );
 
-create index assets_user_idx on public.assets (user_id);
-create unique index assets_user_symbol_uidx on public.assets (user_id, upper(symbol)) where symbol is not null;
-create trigger assets_updated_at before update on public.assets
-  for each row execute function public.set_updated_at();
+create index assets_user_idx on finance.assets (user_id);
+create unique index assets_user_symbol_uidx on finance.assets (user_id, upper(symbol)) where symbol is not null;
+create trigger assets_updated_at before update on finance.assets
+  for each row execute function finance.set_updated_at();
 
 -- ─── Holdings ───────────────────────────────────────────────────────────────
 -- One row per (account, asset). The same asset can be held in many accounts.
 -- opening_units / opening_avg_cost let you record a position without its
 -- full trade history; linked buy/sell transactions are applied on top.
 
-create table public.holdings (
+create table finance.holdings (
   id               uuid primary key default gen_random_uuid(),
   user_id          uuid not null default auth.uid() references auth.users (id) on delete cascade,
   account_id       uuid not null,
@@ -150,14 +122,14 @@ create table public.holdings (
   updated_at       timestamptz not null default now(),
   unique (id, user_id),
   unique (account_id, asset_id),
-  foreign key (account_id, user_id) references public.accounts (id, user_id) on delete cascade,
-  foreign key (asset_id, user_id) references public.assets (id, user_id) on delete restrict
+  foreign key (account_id, user_id) references finance.accounts (id, user_id) on delete cascade,
+  foreign key (asset_id, user_id) references finance.assets (id, user_id) on delete restrict
 );
 
-create index holdings_user_idx on public.holdings (user_id);
-create index holdings_asset_idx on public.holdings (asset_id);
-create trigger holdings_updated_at before update on public.holdings
-  for each row execute function public.set_updated_at();
+create index holdings_user_idx on finance.holdings (user_id);
+create index holdings_asset_idx on finance.holdings (asset_id);
+create trigger holdings_updated_at before update on finance.holdings
+  for each row execute function finance.set_updated_at();
 
 -- ─── Transactions ───────────────────────────────────────────────────────────
 -- amount is the cash value in the account's currency, always positive except
@@ -165,7 +137,7 @@ create trigger holdings_updated_at before update on public.holdings
 -- Only deposit/withdrawal are external flows for the portfolio. Transfers are
 -- stored as two legs sharing transfer_group_id and cancel out in totals.
 
-create table public.transactions (
+create table finance.transactions (
   id                uuid primary key default gen_random_uuid(),
   user_id           uuid not null default auth.uid() references auth.users (id) on delete cascade,
   account_id        uuid not null,
@@ -182,22 +154,22 @@ create table public.transactions (
   transfer_group_id uuid,
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now(),
-  foreign key (account_id, user_id) references public.accounts (id, user_id) on delete cascade,
-  foreign key (holding_id, user_id) references public.holdings (id, user_id) on delete set null (holding_id),
+  foreign key (account_id, user_id) references finance.accounts (id, user_id) on delete cascade,
+  foreign key (holding_id, user_id) references finance.holdings (id, user_id) on delete set null (holding_id),
   constraint amount_sign check ((type = 'adjustment' and amount <> 0) or (type <> 'adjustment' and amount > 0)),
   constraint trade_units check (type not in ('buy', 'sell') or holding_id is null or units is not null),
   constraint transfer_group check ((type in ('transfer_in', 'transfer_out')) = (transfer_group_id is not null))
 );
 
-create index transactions_user_date_idx on public.transactions (user_id, occurred_on desc);
-create index transactions_account_date_idx on public.transactions (account_id, occurred_on);
-create index transactions_holding_idx on public.transactions (holding_id) where holding_id is not null;
-create index transactions_transfer_idx on public.transactions (transfer_group_id) where transfer_group_id is not null;
-create trigger transactions_updated_at before update on public.transactions
-  for each row execute function public.set_updated_at();
+create index transactions_user_date_idx on finance.transactions (user_id, occurred_on desc);
+create index transactions_account_date_idx on finance.transactions (account_id, occurred_on);
+create index transactions_holding_idx on finance.transactions (holding_id) where holding_id is not null;
+create index transactions_transfer_idx on finance.transactions (transfer_group_id) where transfer_group_id is not null;
+create trigger transactions_updated_at before update on finance.transactions
+  for each row execute function finance.set_updated_at();
 
 -- Create both legs of an internal transfer atomically.
-create or replace function public.create_transfer(
+create or replace function finance.create_transfer(
   p_from_account uuid,
   p_to_account uuid,
   p_amount numeric,
@@ -215,7 +187,7 @@ begin
   if p_from_account = p_to_account then
     raise exception 'Choose two different accounts';
   end if;
-  insert into public.transactions (account_id, type, amount, occurred_on, description, transfer_group_id)
+  insert into finance.transactions (account_id, type, amount, occurred_on, description, transfer_group_id)
   values
     (p_from_account, 'transfer_out', p_amount, p_occurred_on, p_description, v_group),
     (p_to_account,   'transfer_in',  p_amount, p_occurred_on, p_description, v_group);
@@ -225,7 +197,7 @@ $$;
 
 -- ─── Market prices (shared cache, written only by the server) ──────────────
 
-create table public.market_prices (
+create table finance.market_prices (
   symbol      text primary key,
   price       numeric(24, 8) not null check (price >= 0),
   currency    text not null,
@@ -238,7 +210,7 @@ create table public.market_prices (
   market_open boolean
 );
 
-create table public.fx_rates (
+create table finance.fx_rates (
   currency   text primary key,
   rate_gbp   numeric(24, 10) not null check (rate_gbp > 0),
   as_of      date not null,
@@ -247,7 +219,7 @@ create table public.fx_rates (
 
 -- ─── Credit cards (carried over from the previous version of the app) ──────
 
-create table public.credit_cards (
+create table finance.credit_cards (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name         text not null check (length(trim(name)) between 1 and 120),
@@ -256,7 +228,7 @@ create table public.credit_cards (
   unique (id, user_id)
 );
 
-create table public.credit_card_bills (
+create table finance.credit_card_bills (
   id              uuid primary key default gen_random_uuid(),
   user_id         uuid not null default auth.uid() references auth.users (id) on delete cascade,
   card_id         uuid not null,
@@ -268,27 +240,23 @@ create table public.credit_card_bills (
   status          text not null default 'unpaid' check (status in ('paid', 'unpaid')),
   notes           text,
   created_at      timestamptz not null default now(),
-  foreign key (card_id, user_id) references public.credit_cards (id, user_id) on delete cascade
+  foreign key (card_id, user_id) references finance.credit_cards (id, user_id) on delete cascade
 );
 
-create index credit_cards_user_idx on public.credit_cards (user_id);
-create index credit_card_bills_card_idx on public.credit_card_bills (card_id, due_date);
+create index credit_cards_user_idx on finance.credit_cards (user_id);
+create index credit_card_bills_card_idx on finance.credit_card_bills (card_id, due_date);
 
 -- ─── Row Level Security ────────────────────────────────────────────────────
 
-alter table public.profiles          enable row level security;
-alter table public.accounts          enable row level security;
-alter table public.account_snapshots enable row level security;
-alter table public.assets            enable row level security;
-alter table public.holdings          enable row level security;
-alter table public.transactions      enable row level security;
-alter table public.market_prices     enable row level security;
-alter table public.fx_rates          enable row level security;
-alter table public.credit_cards      enable row level security;
-alter table public.credit_card_bills enable row level security;
-
-create policy "own profile: read"   on public.profiles for select to authenticated using (id = (select auth.uid()));
-create policy "own profile: update" on public.profiles for update to authenticated using (id = (select auth.uid())) with check (id = (select auth.uid()));
+alter table finance.accounts          enable row level security;
+alter table finance.account_snapshots enable row level security;
+alter table finance.assets            enable row level security;
+alter table finance.holdings          enable row level security;
+alter table finance.transactions      enable row level security;
+alter table finance.market_prices     enable row level security;
+alter table finance.fx_rates          enable row level security;
+alter table finance.credit_cards      enable row level security;
+alter table finance.credit_card_bills enable row level security;
 
 do $$
 declare
@@ -296,18 +264,25 @@ declare
 begin
   foreach t in array array['accounts', 'account_snapshots', 'assets', 'holdings', 'transactions', 'credit_cards', 'credit_card_bills']
   loop
-    execute format('create policy "own rows: select" on public.%I for select to authenticated using (user_id = (select auth.uid()))', t);
-    execute format('create policy "own rows: insert" on public.%I for insert to authenticated with check (user_id = (select auth.uid()))', t);
-    execute format('create policy "own rows: update" on public.%I for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()))', t);
-    execute format('create policy "own rows: delete" on public.%I for delete to authenticated using (user_id = (select auth.uid()))', t);
+    execute format('create policy "own rows: select" on finance.%I for select to authenticated using (user_id = (select auth.uid()))', t);
+    execute format('create policy "own rows: insert" on finance.%I for insert to authenticated with check (user_id = (select auth.uid()))', t);
+    execute format('create policy "own rows: update" on finance.%I for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()))', t);
+    execute format('create policy "own rows: delete" on finance.%I for delete to authenticated using (user_id = (select auth.uid()))', t);
   end loop;
 end;
 $$;
 
 -- Prices and FX rates are public market data: signed-in users may read them,
 -- only the server (service role, which bypasses RLS) may write them.
-create policy "prices: read" on public.market_prices for select to authenticated using (true);
-create policy "fx: read"     on public.fx_rates      for select to authenticated using (true);
+create policy "prices: read" on finance.market_prices for select to authenticated using (true);
+create policy "fx: read"     on finance.fx_rates      for select to authenticated using (true);
 
-revoke execute on function public.create_transfer(uuid, uuid, numeric, date, text) from anon, public;
-grant execute on function public.create_transfer(uuid, uuid, numeric, date, text) to authenticated;
+revoke execute on function finance.create_transfer(uuid, uuid, numeric, date, text) from anon, public;
+grant execute on function finance.create_transfer(uuid, uuid, numeric, date, text) to authenticated;
+
+-- ─── API access ────────────────────────────────────────────────────────────
+-- Custom schemas get no default grants; RLS above still decides which rows.
+
+grant usage on schema finance to authenticated, service_role;
+grant select, insert, update, delete on all tables in schema finance to authenticated, service_role;
+alter default privileges in schema finance grant select, insert, update, delete on tables to authenticated, service_role;
