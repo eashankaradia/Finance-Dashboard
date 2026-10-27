@@ -90,7 +90,7 @@ Choose **Explore with demo data** on the sign-in page to use sample data. *Setti
 
 ## Deploying to Vercel
 
-1. Push the repository to GitHub and import it at [vercel.com/new](https://vercel.com/new). The framework (Next.js) is detected automatically; no `vercel.json` is needed.
+1. Push the repository to GitHub and import it at [vercel.com/new](https://vercel.com/new). `vercel.json` pins the framework to Next.js, so an existing project set up for the old Vite app builds correctly.
 2. Add the environment variables above under *Settings → Environment Variables* (Production and Preview).
 3. Deploy, then put the production URL into Supabase's Site URL / Redirect URLs (step 3 above).
 
