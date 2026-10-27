@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FlaskConical, Plus } from 'lucide-react';
+import { FlaskConical, Plus, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { QuickAdd } from '@/components/forms/quick-add';
 import { cn } from '@/lib/utils';
@@ -84,37 +84,59 @@ export function AppShell({ children, mode, email, supabaseConfigured }: { childr
             </span>
             <span className="font-semibold tracking-tight">Portfolio</span>
           </Link>
-          <QuickAdd
-            trigger={
-              <Button size="icon-sm" variant="brand" aria-label="Add">
-                <Plus />
-              </Button>
-            }
-          />
+          <Link
+            href="/settings"
+            aria-label="Settings"
+            aria-current={isActive(pathname, '/settings') ? 'page' : undefined}
+            className={cn('grid size-9 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground', isActive(pathname, '/settings') && 'bg-accent text-foreground')}
+          >
+            <Settings className="size-5" aria-hidden />
+          </Link>
         </header>
 
         <main className="mx-auto w-full max-w-6xl px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-8">{children}</main>
       </div>
 
-      {/* Mobile bottom navigation */}
+      {/* Mobile bottom navigation: four tabs with Add in the middle; Settings sits in the header. */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-safe backdrop-blur lg:hidden" aria-label="Main">
-        <div className="mx-auto flex max-w-lg">
-          {NAV.map(({ href, label, icon: Icon }) => {
-            const active = isActive(pathname, href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                aria-current={active ? 'page' : undefined}
-                className={cn('flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium text-muted-foreground transition-colors', active && 'text-foreground')}
-              >
-                <Icon className={cn('size-[22px]', active && 'text-brand')} strokeWidth={active ? 2.3 : 1.8} aria-hidden />
-                {label}
-              </Link>
-            );
-          })}
+        <div className="mx-auto flex max-w-lg items-center">
+          {MOBILE_TABS.slice(0, 2).map((item) => (
+            <TabLink key={item.href} item={item} pathname={pathname} />
+          ))}
+          <div className="flex flex-1 justify-center">
+            <QuickAdd
+              align="center"
+              trigger={
+                <button
+                  aria-label="Add"
+                  className="-mt-5 grid size-14 place-items-center rounded-full bg-brand text-brand-foreground shadow-lg ring-4 ring-background transition-transform active:scale-95"
+                >
+                  <Plus className="size-6" strokeWidth={2.4} aria-hidden />
+                </button>
+              }
+            />
+          </div>
+          {MOBILE_TABS.slice(2).map((item) => (
+            <TabLink key={item.href} item={item} pathname={pathname} />
+          ))}
         </div>
       </nav>
     </div>
+  );
+}
+
+const MOBILE_TABS = NAV.filter((n) => n.href !== '/settings');
+
+function TabLink({ item: { href, label, icon: Icon }, pathname }: { item: (typeof NAV)[number]; pathname: string }) {
+  const active = isActive(pathname, href);
+  return (
+    <Link
+      href={href}
+      aria-current={active ? 'page' : undefined}
+      className={cn('flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium text-muted-foreground transition-colors', active && 'text-foreground')}
+    >
+      <Icon className={cn('size-[22px]', active && 'text-brand')} strokeWidth={active ? 2.3 : 1.8} aria-hidden />
+      {label}
+    </Link>
   );
 }
