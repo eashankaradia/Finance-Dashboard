@@ -108,6 +108,11 @@ export default function SettingsPage() {
               <Badge variant="warn">None configured</Badge>
             )}
           </Row>
+          {price.usage.map((u) => (
+            <Row key={u.provider} label={`${u.provider} today`}>
+              {Math.max(0, u.limit - u.used)} of {u.limit} free requests left
+            </Row>
+          ))}
           <Row label="Last price check">{price.lastRefresh ? relativeTime(price.lastRefresh) : '—'}</Row>
           <Row label="Exchange rates">
             {fx.fallback ? <Badge variant="warn">Approximate fallback</Badge> : `${fx.source}${fx.asOf ? `, ${formatDate(fx.asOf)}` : ''}`}

@@ -175,3 +175,25 @@ export function ValueSourceBadge({ source }: { source: 'snapshot' | 'calculated'
   if (source === 'snapshot') return <Badge variant="outline">Manual valuation</Badge>;
   return <Badge variant="warn">No valuation yet</Badge>;
 }
+
+/** Free market data requests left today, per daily-capped provider. */
+export function ApiUsage({ usage, className }: { usage: { provider: string; used: number; limit: number }[]; className?: string }) {
+  if (!usage.length) return null;
+  return (
+    <p className={cn('text-xs text-muted-foreground', className)} title="Counts the app's requests since midnight UTC, when the free allowances reset. Cached prices don't use any.">
+      Free price checks left today:{' '}
+      {usage.map((u, i) => {
+        const left = Math.max(0, u.limit - u.used);
+        return (
+          <span key={u.provider}>
+            {i > 0 ? ' · ' : null}
+            <span className={cn('font-medium tabular', left <= Math.ceil(u.limit * 0.15) ? 'text-warn' : 'text-foreground')}>
+              {left} of {u.limit}
+            </span>{' '}
+            {u.provider}
+          </span>
+        );
+      })}
+    </p>
+  );
+}

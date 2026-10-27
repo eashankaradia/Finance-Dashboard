@@ -6,7 +6,7 @@ import { buildPortfolio } from '../finance/portfolio';
 import type { Dataset, MarketPrice } from '../types';
 import { fetchFxRates } from './fx';
 import { configuredProviders, providerFor, type DailyClose } from './providers';
-import { getPrices } from './service';
+import { getPrices, recordApiCalls } from './service';
 
 /**
  * Daily job (run by Vercel Cron on weekday evenings, see vercel.json):
@@ -88,6 +88,7 @@ export async function runDailyUpdate(db: Db, today = todayISO()): Promise<DailyR
     }
     const from = lastDate ? addDays(lastDate, 1) : addDays(today, -BACKFILL_DAYS);
     try {
+      await recordApiCalls(db, new Map([[provider.name, 1]]));
       const rows = await provider.history(symbol, from);
       await storeCloses(db, symbol, rows, provider.name);
       if (rows[0]) {
