@@ -115,6 +115,7 @@ export default function SettingsPage() {
           <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
             <li>Prices are never real-time. Alpha Vantage&apos;s free tier gives delayed or end-of-day quotes (25 requests/day); Finnhub&apos;s free tier covers US listings only (60/minute). Each price shows when it was last updated and whether the market was closed.</li>
             <li>Prices are fetched on the server, cached for 15 minutes while a market is open and 6 hours when it is closed, and at most 5 symbols are fetched per refresh to respect rate limits.</li>
+            <li>Every weekday evening the app saves each investment&apos;s closing price and the value of accounts valued from holdings, so history builds up even if you don&apos;t open it.</li>
             <li>When a price can&apos;t be fetched, the app uses your manual price, then the last known price, then the purchase cost, and labels it.</li>
             <li>UK funds (unit trusts and OEICs) aren&apos;t on an exchange. Enter the fund&apos;s ISIN (GB00…) as its ticker and, with an EODHD key, the app fetches its daily price (20 requests/day on the free tier). Otherwise price them manually from the holding&apos;s &quot;Edit price / details&quot;.</li>
           </ul>

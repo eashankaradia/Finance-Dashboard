@@ -268,3 +268,26 @@ function demoCards(today: string): Pick<Dataset, 'cards' | 'bills'> {
   });
   return { cards: [amex, lloyds], bills };
 }
+
+/**
+ * Demo price history: a year of weekday closes ending at the demo price,
+ * generated from a seeded random walk so it's stable between visits.
+ */
+export function demoPriceHistory(symbol: string, today = todayISO()): { date: string; close: number }[] {
+  const latest = DEMO_PRICE_DATA[symbol]?.price;
+  if (latest == null) return [];
+  const rand = rng([...symbol].reduce((s, c) => s * 31 + c.charCodeAt(0), 7) >>> 0);
+  const days: string[] = [];
+  for (let d = addDays(today, -365); d <= today; d = addDays(d, 1)) {
+    const wd = new Date(`${d}T12:00:00Z`).getUTCDay();
+    if (wd !== 0 && wd !== 6) days.push(d);
+  }
+  // Walk backwards from today's price.
+  const out: { date: string; close: number }[] = [];
+  let price = latest;
+  for (let i = days.length - 1; i >= 0; i--) {
+    out.push({ date: days[i], close: round2(price) });
+    price = price / (1 + (rand() - 0.47) * 0.024);
+  }
+  return out.reverse();
+}

@@ -59,9 +59,10 @@ const NUMERIC_FIELDS = new Set([
   'price',
   'change',
   'change_pct',
+  'close',
 ]);
 
-function normalise<T>(row: T): T {
+export function normaliseRow<T>(row: T): T {
   const out = { ...row } as Record<string, unknown>;
   for (const [k, v] of Object.entries(out)) {
     if (NUMERIC_FIELDS.has(k) && typeof v === 'string') out[k] = Number(v);
@@ -82,7 +83,7 @@ export class SupabaseRepository implements Repository {
       (Object.keys(TABLES) as Collection[]).map(async (c) => {
         const { data, error } = await this.db.from(TABLES[c]).select('*').order('created_at');
         fail(error);
-        return [c, (data ?? []).map(normalise)] as const;
+        return [c, (data ?? []).map(normaliseRow)] as const;
       }),
     );
     return Object.fromEntries(entries) as unknown as Dataset;
@@ -92,13 +93,13 @@ export class SupabaseRepository implements Repository {
     if (symbols.length === 0) return {};
     const { data, error } = await this.db.from('market_prices').select('*').in('symbol', symbols);
     if (error) return {};
-    return Object.fromEntries((data ?? []).map((p) => [p.symbol, normalise(p) as MarketPrice]));
+    return Object.fromEntries((data ?? []).map((p) => [p.symbol, normaliseRow(p) as MarketPrice]));
   }
 
   async insert<C extends Collection>(collection: C, row: Partial<Row<C>>): Promise<Row<C>> {
     const { data, error } = await this.db.from(TABLES[collection]).insert(row as Record<string, unknown>).select().single();
     fail(error);
-    return normalise(data) as Row<C>;
+    return normaliseRow(data) as Row<C>;
   }
 
   async update<C extends Collection>(collection: C, id: string, patch: Partial<Row<C>>): Promise<void> {
