@@ -2,15 +2,41 @@ import 'server-only';
 import type { Db } from '@/lib/supabase/types';
 import type { MarketPrice } from '../types';
 import { isMarketOpen, marketForSymbol } from './hours';
-import { configuredProviders, NotFoundError, providerFor, RateLimitError, type QuoteRequest } from './providers';
+import { configuredProviders, NotFoundError, providerFor, RateLimitError, type Provider, type QuoteRequest } from './providers';
 
 export type QuoteStatus = 'fresh' | 'cached' | 'stale' | 'rate_limited' | 'not_found' | 'error' | 'no_provider';
+
+export interface ProviderUsage {
+  provider: string;
+  used: number;
+  limit: number;
+}
 
 export interface PricesResponse {
   prices: Record<string, MarketPrice>;
   statuses: Record<string, QuoteStatus>;
   messages: Record<string, string>;
   providers: string[];
+  /** Today's (UTC) calls against each daily-capped provider. */
+  usage: ProviderUsage[];
+}
+
+/** Adds this run's provider calls to today's shared counter (service role only). */
+export async function recordApiCalls(writer: Db | null | undefined, calls: Map<string, number>): Promise<void> {
+  if (!writer) return;
+  for (const [provider, count] of calls) {
+    if (count > 0) await writer.rpc('record_api_calls', { p_provider: provider, p_count: count });
+  }
+}
+
+/** Today's (UTC) usage for each configured provider that has a daily cap. */
+export async function readApiUsage(reader: Db | null | undefined, providers: Provider[]): Promise<ProviderUsage[]> {
+  const capped = providers.filter((p) => p.dailyLimit);
+  if (!reader || capped.length === 0) return [];
+  const today = new Date().toISOString().slice(0, 10);
+  const { data } = await reader.from('api_usage').select('provider, calls').eq('usage_date', today);
+  const used = new Map((data ?? []).map((r) => [r.provider as string, Number(r.calls)]));
+  return capped.map((p) => ({ provider: p.name, used: used.get(p.name) ?? 0, limit: p.dailyLimit! }));
 }
 
 // Cache lifetime: short while the market is open, longer when it is closed.
@@ -37,7 +63,8 @@ export async function getPrices(
 ): Promise<PricesResponse> {
   const now = Date.now();
   const providers = configuredProviders();
-  const out: PricesResponse = { prices: {}, statuses: {}, messages: {}, providers: providers.map((p) => p.name) };
+  const out: PricesResponse = { prices: {}, statuses: {}, messages: {}, providers: providers.map((p) => p.name), usage: [] };
+  const calls = new Map<string, number>();
 
   // 1. Shared cache in Supabase, then this instance's memory.
   const symbols = requests.map((r) => r.symbol);
@@ -86,6 +113,7 @@ export async function getPrices(
     lastFetchBySymbol.set(req.symbol, now);
     try {
       const provider = providerFor(req.symbol, providers)!;
+      calls.set(provider.name, (calls.get(provider.name) ?? 0) + 1);
       const p = await provider.quote(req, opts.fetcher);
       memoryCache.set(req.symbol, p);
       out.prices[req.symbol] = p;
@@ -108,5 +136,7 @@ export async function getPrices(
   if (opts.writer && fetched.length) {
     await opts.writer.from('market_prices').upsert(fetched, { onConflict: 'symbol' });
   }
+  await recordApiCalls(opts.writer, calls);
+  out.usage = await readApiUsage(opts.reader, providers);
   return out;
 }

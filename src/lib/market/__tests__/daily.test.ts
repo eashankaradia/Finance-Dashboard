@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
 import { runDailyUpdate } from '../daily';
+import { getPrices } from '../service';
 
 type Row = Record<string, unknown>;
 
@@ -33,7 +34,16 @@ function fakeDb(tables: Record<string, Row[]>) {
     };
     return q;
   };
-  return { from } as never;
+  const rpc = async (fn: string, args: { p_provider: string; p_count: number }) => {
+    if (fn !== 'record_api_calls') throw new Error(`unexpected rpc ${fn}`);
+    const rows = (tables.api_usage ??= []);
+    const day = new Date().toISOString().slice(0, 10);
+    const row = rows.find((r) => r.provider === args.p_provider && r.usage_date === day);
+    if (row) row.calls = Number(row.calls) + args.p_count;
+    else rows.push({ provider: args.p_provider, usage_date: day, calls: args.p_count });
+    return { data: null, error: null };
+  };
+  return { from, rpc } as never;
 }
 
 const U = 'user-1';
@@ -50,6 +60,7 @@ function seed() {
     holdings: [{ id: 'h1', user_id: U, account_id: 'hl', asset_id: 'lg', opening_units: '1000', opening_avg_cost: '300', created_at: '2026-10-01T00:00:00Z' }],
     price_history: [] as Row[],
     market_prices: [] as Row[],
+    api_usage: [] as Row[],
   };
 }
 
@@ -81,12 +92,21 @@ describe('daily update job', () => {
     expect(calls.find((c) => c.includes('eodhd.com'))).toContain('GB00BG0QP604.EUFUND');
     expect(calls.find((c) => c.includes('eodhd.com'))).toContain('from=2025-10-27');
     expect(t.price_history).toHaveLength(2);
+    expect(t.api_usage).toEqual([expect.objectContaining({ provider: 'EODHD', calls: 1 })]);
     expect(t.market_prices[0]).toMatchObject({ symbol: 'GB00BG0QP604', price: 376.5, currency: 'GBX' });
 
     // 1000 units × 376.5p = £3,765.00, only for the holdings-valued account.
     expect(res.snapshots).toEqual([{ account_id: 'hl', value: 3765 }]);
     expect(t.account_snapshots).toHaveLength(1);
     expect(t.account_snapshots[0]).toMatchObject({ user_id: U, account_id: 'hl', valued_on: '2026-10-27', value: 3765 });
+  });
+
+  it('counts price checks against the daily allowance', async () => {
+    const t = seed();
+    const db = fakeDb(t);
+    const res = await getPrices([{ symbol: 'GB00BN7CMW56', currency: 'GBX' }], { force: true, reader: db, writer: db });
+    expect(res.statuses.GB00BN7CMW56).toBe('fresh');
+    expect(res.usage).toEqual([{ provider: 'EODHD', used: 1, limit: 20 }]);
   });
 
   it('is safe to run twice on the same day', async () => {
@@ -96,5 +116,6 @@ describe('daily update job', () => {
     await runDailyUpdate(fakeDb(t), '2026-10-27');
     expect(calls.filter((c) => c.includes('eodhd.com')).length).toBe(eodhdCalls); // already up to date
     expect(t.account_snapshots).toHaveLength(1);
+    expect(t.api_usage[0].calls).toBe(1); // the up-to-date second run spent nothing
   });
 });

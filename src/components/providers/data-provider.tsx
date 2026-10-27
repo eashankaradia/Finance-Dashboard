@@ -9,13 +9,14 @@ import { buildPortfolio, type PortfolioModel } from '@/lib/finance/portfolio';
 import { getBrowserSupabase } from '@/lib/supabase/client';
 import type { Dataset, MarketPrice } from '@/lib/types';
 import { EMPTY_DATASET } from '@/lib/types';
-import type { QuoteStatus } from '@/lib/market/service';
+import type { ProviderUsage, QuoteStatus } from '@/lib/market/service';
 
 export interface PriceState {
   prices: Record<string, MarketPrice>;
   statuses: Record<string, QuoteStatus>;
   messages: Record<string, string>;
   providers: string[];
+  usage: ProviderUsage[];
   refreshing: boolean;
   lastRefresh: string | null;
   error: string | null;
@@ -73,7 +74,7 @@ export function DataProvider({ mode, children }: { mode: 'supabase' | 'demo'; ch
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<Dataset>(EMPTY_DATASET);
   const [fx, setFx] = React.useState<FxState>({ rates: DEMO_FX, asOf: null, source: 'Loading', fallback: true });
-  const [price, setPrice] = React.useState<PriceState>({ prices: {}, statuses: {}, messages: {}, providers: [], refreshing: false, lastRefresh: null, error: null });
+  const [price, setPrice] = React.useState<PriceState>({ prices: {}, statuses: {}, messages: {}, providers: [], usage: [], refreshing: false, lastRefresh: null, error: null });
 
   const reload = React.useCallback(async () => {
     try {
@@ -129,6 +130,7 @@ export function DataProvider({ mode, children }: { mode: 'supabase' | 'demo'; ch
           statuses: json.statuses,
           messages: json.messages,
           providers: json.providers,
+          usage: json.usage ?? [],
           refreshing: false,
           lastRefresh: new Date().toISOString(),
           error: null,

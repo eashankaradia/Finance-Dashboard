@@ -29,6 +29,8 @@ export interface QuoteRequest {
 
 export interface Provider {
   name: string;
+  /** Free-tier requests per UTC day, when the provider has a daily cap. */
+  dailyLimit?: number;
   supports(symbol: string): boolean;
   quote(req: QuoteRequest, fetcher?: typeof fetch): Promise<MarketPrice>;
   /** Daily closes from `from` (inclusive) to today, newest first. One API call. */
@@ -162,6 +164,7 @@ async function getJson(url: string, fetcher: typeof fetch): Promise<unknown> {
 export function alphaVantage(apiKey: string): Provider {
   return {
     name: 'Alpha Vantage',
+    dailyLimit: 25,
     supports: () => true,
     async quote(req, fetcher = fetch) {
       const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(req.symbol)}&apikey=${encodeURIComponent(apiKey)}`;
@@ -187,6 +190,7 @@ export function eodhd(apiKey: string): Provider {
     `https://eodhd.com/api/eod/${encodeURIComponent(eodhdFundCode(symbol)!)}?api_token=${encodeURIComponent(apiKey)}&fmt=json&order=d&from=${from}`;
   return {
     name: 'EODHD',
+    dailyLimit: 20,
     supports: (symbol) => eodhdFundCode(symbol) != null,
     async quote(req, fetcher = fetch) {
       const from = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);

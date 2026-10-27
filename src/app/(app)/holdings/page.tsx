@@ -8,7 +8,7 @@ import { Input, NativeSelect } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/alert-dialog';
-import { EmptyState, ErrorState, GainText, Money, Notice, PageHeader, PageSkeleton, PercentText, PriceBadge, StatCard } from '@/components/common';
+import { ApiUsage, EmptyState, ErrorState, GainText, Money, Notice, PageHeader, PageSkeleton, PercentText, PriceBadge, StatCard } from '@/components/common';
 import { useData } from '@/components/providers/data-provider';
 import { HoldingCard, HoldingTable } from '@/components/shared/lists';
 import { HoldingPerformance } from '@/components/shared/holding-performance';
@@ -109,6 +109,7 @@ export default function HoldingsPage() {
           </>
         }
       />
+      <ApiUsage usage={price.usage} className="-mt-3 mb-4" />
 
       {mode === 'supabase' && price.providers.length === 0 && data.assets.some((a) => a.symbol && a.price_mode === 'market') ? (
         <Notice tone="warn" className="mb-4">
