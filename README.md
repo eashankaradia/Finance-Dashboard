@@ -17,6 +17,7 @@ You can try everything without any setup: run it locally and choose **Explore wi
 - **Transactions**: contributions, withdrawals, transfers between your accounts (stored as two linked legs, edited/deleted together), buys, sells, dividends, interest, fees, adjustments. Optional linked holding, units, price and fees. Filters by account, type, date range and text; pagination; monthly and yearly deposit/withdrawal totals.
 - **Holdings**: stocks, ETFs, funds, investment trusts and more, in UK (GBX/GBP) and US (USD) listings. Enter units and average price directly, record trades, or both. Average-cost cost basis, unrealised and realised gain, dividends, price source and last-update time. Sortable table on desktop, cards on mobile. Watchlist.
 - **Market prices**: fetched server-side, cached, rate-limited, clearly labelled (delayed / previous close / manual / demo, market closed). Manual price fallback and refresh button.
+- **Daily history** (weekday evenings, Vercel Cron → `/api/cron/daily`): stores each investment's closing price in `price_history` (UK funds backfill a year on the first run) and saves the calculated value of every holdings-valued account as a snapshot. Each holding shows a value-over-time chart and 1M/3M/6M/1Y price returns.
 - **Insights**: value over time, gain/loss over time, contributions vs withdrawals, account performance comparison, per-account performance table, allocation charts.
 - **CSV export**: transactions (respects filters), holdings, valuation snapshots, account summaries.
 - **Credit cards**: the statement/due-date tracker from the previous version, now per-user.
@@ -54,7 +55,7 @@ Tests cover decimal safety, flow classification (transfers and trades are not co
 All tables live in their own `finance` Postgres schema, so the app can share a Supabase project with other apps (it currently shares the **My House Dashboard** project) without touching their tables. Sign-in uses that project's existing accounts.
 
 1. Apply the schema (already done for My House Dashboard), either:
-   - **SQL editor:** paste `supabase/migrations/20261027000000_initial_schema.sql` into *SQL Editor → New query* and run it; or
+   - **SQL editor:** paste each file in `supabase/migrations/` (in order) into *SQL Editor → New query* and run it; or
    - **CLI:** `npx supabase link --project-ref <ref>` then `npx supabase db push`.
 2. *Project Settings → Data API → Exposed schemas*: add `finance` (keep the schemas already listed). Without this the app can't reach its tables.
 3. *Authentication → URL Configuration*: add `http://localhost:3000/**` and `https://your-app.vercel.app/**` to **Redirect URLs**. Leave the Site URL as it is if another app already uses it.
@@ -72,12 +73,13 @@ Copy `.env.example` to `.env.local` and fill in:
 | --- | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | browser + server | For real data | Supabase → Project Settings → API → Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | browser + server | For real data | Same page → `anon` `public` key (safe to expose; RLS protects data) |
-| `SUPABASE_SERVICE_ROLE_KEY` | server only | Recommended | Same page → `service_role` key. Lets the server write the shared price cache. Never expose it. |
+| `SUPABASE_SERVICE_ROLE_KEY` | server only | For the daily job | Same page → `service_role` (secret) key. Lets the server write the shared price cache, price history and daily valuations. Never expose it. |
+| `CRON_SECRET` | server only | For the daily job | Any long random string. Vercel sends it to `/api/cron/daily`; other callers are refused. |
 | `ALPHA_VANTAGE_API_KEY` | server only | For live UK prices | Free key at [alphavantage.co](https://www.alphavantage.co/support/#api-key) |
 | `FINNHUB_API_KEY` | server only | Optional | Free key at [finnhub.io](https://finnhub.io/register) (US tickers) |
 | `EODHD_API_KEY` | server only | For UK fund prices | Free key at [eodhd.com](https://eodhd.com/register) (unit trusts/OEICs by ISIN) |
 
-Without the Supabase variables the app runs in demo mode only. Without market data keys, prices fall back to manual prices (or cost) and are labelled.
+Without the Supabase variables the app runs in demo mode only. Without `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` the daily history job doesn't run. Without market data keys, prices fall back to manual prices (or cost) and are labelled.
 
 ## Local development
 
@@ -93,7 +95,8 @@ Choose **Explore with demo data** on the sign-in page to use sample data. *Setti
 
 1. Push the repository to GitHub and import it at [vercel.com/new](https://vercel.com/new). `vercel.json` pins the framework to Next.js, so an existing project set up for the old Vite app builds correctly.
 2. Add the environment variables above under *Settings → Environment Variables* (Production and Preview).
-3. Deploy, then put the production URL into Supabase's Site URL / Redirect URLs (step 3 above).
+3. The daily job is scheduled in `vercel.json` (21:00 UTC, Monday to Friday) and needs `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET`.
+4. Deploy, then put the production URL into Supabase's Site URL / Redirect URLs (step 3 above).
 
 ## Market data: choices and limitations
 

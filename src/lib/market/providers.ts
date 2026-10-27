@@ -31,6 +31,8 @@ export interface Provider {
   name: string;
   supports(symbol: string): boolean;
   quote(req: QuoteRequest, fetcher?: typeof fetch): Promise<MarketPrice>;
+  /** Daily closes from `from` (inclusive) to today, newest first. One API call. */
+  history?(symbol: string, from: string, fetcher?: typeof fetch): Promise<DailyClose[]>;
 }
 
 const num = (v: unknown): number | null => {
@@ -105,19 +107,32 @@ export function eodhdFundCode(symbol: string): string | null {
   return ISIN_RE.test(isin) ? `${isin}.EUFUND` : null;
 }
 
-/** Parses an EODHD /eod response (rows newest first, `order=d`). */
-export function parseEodhdEod(json: unknown, req: QuoteRequest, now = new Date()): MarketPrice {
+/** A daily closing price. */
+export interface DailyClose {
+  date: string;
+  close: number;
+}
+
+/** Parses an EODHD /eod response into daily closes, newest first. */
+export function parseEodhdRows(json: unknown): DailyClose[] {
   const body = json as Record<string, unknown> | Array<Record<string, unknown>>;
   if (!Array.isArray(body)) {
     const msg = String((body as Record<string, unknown>)?.message ?? (body as Record<string, unknown>)?.error ?? 'Unexpected response');
     if (/limit/i.test(msg)) throw new RateLimitError('EODHD daily limit reached');
     throw new Error(msg.slice(0, 200));
   }
-  const rows = body.filter((r) => num(r?.close) != null && typeof r?.date === 'string');
+  return body
+    .filter((r) => num(r?.close) != null && typeof r?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(String(r.date)))
+    .map((r) => ({ date: String(r.date), close: num(r.close)! }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Parses an EODHD /eod response (any order) into the latest quote. */
+export function parseEodhdEod(json: unknown, req: QuoteRequest, now = new Date()): MarketPrice {
+  const rows = parseEodhdRows(json);
   if (!rows.length) throw new NotFoundError(`No recent price for ${req.symbol}`);
-  rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  const price = num(rows[0].close)!;
-  const prev = rows[1] ? num(rows[1].close) : null;
+  const price = rows[0].close;
+  const prev = rows[1] ? rows[1].close : null;
   const change = prev == null ? null : price - prev;
   return {
     symbol: req.symbol,
@@ -168,13 +183,17 @@ export function finnhub(apiKey: string): Provider {
 }
 
 export function eodhd(apiKey: string): Provider {
+  const url = (symbol: string, from: string) =>
+    `https://eodhd.com/api/eod/${encodeURIComponent(eodhdFundCode(symbol)!)}?api_token=${encodeURIComponent(apiKey)}&fmt=json&order=d&from=${from}`;
   return {
     name: 'EODHD',
     supports: (symbol) => eodhdFundCode(symbol) != null,
     async quote(req, fetcher = fetch) {
       const from = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
-      const url = `https://eodhd.com/api/eod/${encodeURIComponent(eodhdFundCode(req.symbol)!)}?api_token=${encodeURIComponent(apiKey)}&fmt=json&order=d&from=${from}`;
-      return parseEodhdEod(await getJson(url, fetcher), req);
+      return parseEodhdEod(await getJson(url(req.symbol, from), fetcher), req);
+    },
+    async history(symbol, from, fetcher = fetch) {
+      return parseEodhdRows(await getJson(url(symbol, from), fetcher));
     },
   };
 }

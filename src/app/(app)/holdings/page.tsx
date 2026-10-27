@@ -11,6 +11,7 @@ import { ConfirmDialog } from '@/components/ui/alert-dialog';
 import { EmptyState, ErrorState, GainText, Money, Notice, PageHeader, PageSkeleton, PercentText, PriceBadge, StatCard } from '@/components/common';
 import { useData } from '@/components/providers/data-provider';
 import { HoldingCard, HoldingTable } from '@/components/shared/lists';
+import { HoldingPerformance } from '@/components/shared/holding-performance';
 import { AssetDialog, HoldingDialog } from '@/components/forms/holding-form';
 import { TransactionDialog } from '@/components/forms/transaction-form';
 import { convertOrSame } from '@/lib/finance/fx';
@@ -291,6 +292,10 @@ function HoldingDetail({ position, onClose }: { position: HoldingPosition | null
       <Dialog open={!!p && dialog === null} onOpenChange={(o) => !o && onClose()}>
         {p ? (
           <DialogContent title={p.asset.symbol ? `${p.asset.symbol}` : p.asset.name} description={p.asset.symbol ? p.asset.name : undefined}>
+            <section className="mb-4" aria-label="Performance">
+              <h3 className="mb-2 text-sm font-semibold">Performance</h3>
+              <HoldingPerformance p={p} />
+            </section>
             <dl className="divide-y text-sm">
               {rows.map(([k, v]) => (
                 <div key={k} className="flex items-center justify-between gap-4 py-2">
