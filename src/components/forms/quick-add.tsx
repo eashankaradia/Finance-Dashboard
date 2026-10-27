@@ -10,14 +10,14 @@ import { TransactionDialog } from './transaction-form';
 
 type Which = 'snapshot' | 'deposit' | 'transfer' | 'transaction' | 'holding' | 'account' | null;
 
-export function QuickAdd({ trigger }: { trigger: React.ReactNode }) {
+export function QuickAdd({ trigger, align = 'end' }: { trigger: React.ReactNode; align?: 'start' | 'center' | 'end' }) {
   const [open, setOpen] = React.useState<Which>(null);
   const close = (o: boolean) => !o && setOpen(null);
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56">
+        <DropdownMenuContent className="w-56" align={align}>
           <DropdownMenuItem onSelect={() => setOpen('snapshot')}>
             <Camera /> Record a valuation
           </DropdownMenuItem>
