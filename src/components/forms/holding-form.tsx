@@ -22,6 +22,8 @@ function guessFromSymbol(symbol: string): { exchange: string; currency: string }
   const s = symbol.toUpperCase();
   if (s.endsWith('.LON') || s.endsWith('.L')) return { exchange: 'LSE', currency: 'GBX' };
   if (/^[A-Z]{1,5}$/.test(s)) return { exchange: 'US', currency: 'USD' };
+  // UK unit trusts/OEICs by ISIN: platforms usually quote them in pence.
+  if (/^GB[A-Z0-9]{9}[0-9]$/.test(s)) return { exchange: 'Fund', currency: 'GBX' };
   return null;
 }
 
@@ -70,7 +72,7 @@ export function useAssetFields(asset?: Asset) {
         <Input id="as-name" value={fields.name} onChange={(e) => setFields({ ...fields, name: e.target.value })} placeholder="e.g. Vanguard FTSE Global All Cap" />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Ticker" htmlFor="as-symbol" error={errors.symbol} hint="London: add .LON (VUSA.LON). US: plain (AAPL).">
+        <Field label="Ticker" htmlFor="as-symbol" error={errors.symbol} hint="London: VUSA.LON. US: AAPL. UK funds: the ISIN (GB00…).">
           <Input
             id="as-symbol"
             value={fields.symbol}

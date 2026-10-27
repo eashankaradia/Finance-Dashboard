@@ -75,6 +75,7 @@ Copy `.env.example` to `.env.local` and fill in:
 | `SUPABASE_SERVICE_ROLE_KEY` | server only | Recommended | Same page → `service_role` key. Lets the server write the shared price cache. Never expose it. |
 | `ALPHA_VANTAGE_API_KEY` | server only | For live UK prices | Free key at [alphavantage.co](https://www.alphavantage.co/support/#api-key) |
 | `FINNHUB_API_KEY` | server only | Optional | Free key at [finnhub.io](https://finnhub.io/register) (US tickers) |
+| `EODHD_API_KEY` | server only | For UK fund prices | Free key at [eodhd.com](https://eodhd.com/register) (unit trusts/OEICs by ISIN) |
 
 Without the Supabase variables the app runs in demo mode only. Without market data keys, prices fall back to manual prices (or cost) and are labelled.
 
@@ -102,12 +103,13 @@ Researched October 2026 (free tiers):
 | --- | --- | --- | --- | --- |
 | **Alpha Vantage** (used) | 25 requests/day, 5/min | Yes (`VUSA.LON`) | Yes | Delayed / end of day |
 | **Finnhub** (optional, US) | 60 requests/min | No (paid) | Yes | Delayed |
+| **EODHD** (optional, UK funds) | 20 requests/day | Funds by ISIN (`EUFUND`) | — | End of day |
 | Twelve Data | 800/day, 8/min | No (US only on free plan) | Yes | — |
 
 - **Prices are not real-time.** They're labelled *Delayed* or *Close <date>*, with a *closed* marker outside exchange hours (LSE 08:00–16:30 UK, US 09:30–16:00 ET; holidays aren't modelled).
 - Alpha Vantage's 25 requests/day is the binding limit. Prices are cached (15 min while the market is open, 6 h when closed) in the `market_prices` table, at most 5 symbols are fetched per refresh, and only signed-in users can call the price API. With many holdings, refresh in batches or set manual prices for funds.
 - LSE quotes are usually in pence (GBX). Set *Quoted in* per investment (the form guesses from the ticker). Some LSE ETFs quote in GBP or USD.
-- Unit trusts/OEICs (most UK funds) usually have no ticker. Use a manual price, or 1 unit valued at the total.
+- Unit trusts/OEICs (most UK funds) have no ticker. Enter the fund's ISIN (e.g. `GB00BG0QP604`) as the ticker and add an `EODHD_API_KEY` to fetch its daily price; the form assumes pence (GBX), so compare the first price with your platform and switch *Quoted in* to GBP if it's 100× off. Without a key, use a manual price.
 - Exchange rates come from the ECB via Frankfurter (free, no key, daily). Historical values in other currencies are converted at today's rate, and foreign holdings' gains exclude currency movements.
 - Market data calls couldn't be exercised from the build environment (outbound access to the providers was blocked); response parsing follows the providers' documented formats. Check the Holdings page after adding your key.
 

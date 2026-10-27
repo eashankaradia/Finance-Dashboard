@@ -111,7 +111,7 @@ export default function HoldingsPage() {
 
       {mode === 'supabase' && price.providers.length === 0 && data.assets.some((a) => a.symbol && a.price_mode === 'market') ? (
         <Notice tone="warn" className="mb-4">
-          No market data API key is configured, so prices fall back to the manual price you entered (or cost). Add <code>ALPHA_VANTAGE_API_KEY</code> to enable automatic prices (see Settings → Market data).
+          No market data API key is configured, so prices fall back to the manual price you entered (or cost). Add <code>ALPHA_VANTAGE_API_KEY</code> (shares and ETFs) or <code>EODHD_API_KEY</code> (UK funds) to enable automatic prices (see Settings → Market data).
         </Notice>
       ) : null}
       {price.error ? (

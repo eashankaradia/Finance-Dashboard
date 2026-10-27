@@ -11,6 +11,9 @@ import { isMarketOpen, marketForSymbol, todayInMarket } from './hours';
  * - Finnhub (FINNHUB_API_KEY, optional): US-listed symbols only on the free
  *   tier, 60 requests/minute. Used for US tickers when configured because the
  *   allowance is far more generous.
+ * - EODHD (EODHD_API_KEY, optional): UK unit trusts / OEICs, which aren't
+ *   exchange-listed, looked up by ISIN on its EUFUND "exchange". Free tier:
+ *   20 requests/day, end-of-day data only. Funds are priced once a day anyway.
  *
  * Neither is labelled real-time in the app.
  */
@@ -92,9 +95,51 @@ export function parseFinnhubQuote(json: unknown, req: QuoteRequest, now = new Da
   };
 }
 
+/** ISIN: 2-letter country, 9 alphanumerics, 1 check digit (e.g. GB00BG0QP604). */
+export const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/;
+
+/** Fund symbols EODHD handles: a bare ISIN or ISIN.EUFUND. */
+export function eodhdFundCode(symbol: string): string | null {
+  const s = symbol.toUpperCase();
+  const isin = s.endsWith('.EUFUND') ? s.slice(0, -'.EUFUND'.length) : s;
+  return ISIN_RE.test(isin) ? `${isin}.EUFUND` : null;
+}
+
+/** Parses an EODHD /eod response (rows newest first, `order=d`). */
+export function parseEodhdEod(json: unknown, req: QuoteRequest, now = new Date()): MarketPrice {
+  const body = json as Record<string, unknown> | Array<Record<string, unknown>>;
+  if (!Array.isArray(body)) {
+    const msg = String((body as Record<string, unknown>)?.message ?? (body as Record<string, unknown>)?.error ?? 'Unexpected response');
+    if (/limit/i.test(msg)) throw new RateLimitError('EODHD daily limit reached');
+    throw new Error(msg.slice(0, 200));
+  }
+  const rows = body.filter((r) => num(r?.close) != null && typeof r?.date === 'string');
+  if (!rows.length) throw new NotFoundError(`No recent price for ${req.symbol}`);
+  rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const price = num(rows[0].close)!;
+  const prev = rows[1] ? num(rows[1].close) : null;
+  const change = prev == null ? null : price - prev;
+  return {
+    symbol: req.symbol,
+    price,
+    currency: req.currency,
+    change,
+    change_pct: change == null || !prev ? null : change / prev,
+    // UK funds are typically valued at midday; the provider only gives the date.
+    as_of: `${rows[0].date}T12:00:00.000Z`,
+    fetched_at: now.toISOString(),
+    source: 'EODHD',
+    freshness: 'end_of_day',
+    market_open: null,
+  };
+}
+
 async function getJson(url: string, fetcher: typeof fetch): Promise<unknown> {
   const res = await fetcher(url, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
-  if (res.status === 429) throw new RateLimitError('Provider rate limit reached');
+  // 402 is EODHD's "daily API limit reached".
+  if (res.status === 429 || res.status === 402) throw new RateLimitError('Provider rate limit reached');
+  if (res.status === 404) throw new NotFoundError('Symbol not found by the provider');
+  if (res.status === 403) throw new Error('This API key does not include that symbol');
   if (!res.ok) throw new Error(`Provider returned HTTP ${res.status}`);
   return res.json();
 }
@@ -122,9 +167,23 @@ export function finnhub(apiKey: string): Provider {
   };
 }
 
+export function eodhd(apiKey: string): Provider {
+  return {
+    name: 'EODHD',
+    supports: (symbol) => eodhdFundCode(symbol) != null,
+    async quote(req, fetcher = fetch) {
+      const from = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
+      const url = `https://eodhd.com/api/eod/${encodeURIComponent(eodhdFundCode(req.symbol)!)}?api_token=${encodeURIComponent(apiKey)}&fmt=json&order=d&from=${from}`;
+      return parseEodhdEod(await getJson(url, fetcher), req);
+    },
+  };
+}
+
 /** Providers in priority order, from server environment variables. */
 export function configuredProviders(env: Record<string, string | undefined> = process.env): Provider[] {
   const list: Provider[] = [];
+  // Only claims ISINs, so it goes before Alpha Vantage, which accepts anything.
+  if (env.EODHD_API_KEY) list.push(eodhd(env.EODHD_API_KEY));
   if (env.FINNHUB_API_KEY) list.push(finnhub(env.FINNHUB_API_KEY));
   if (env.ALPHA_VANTAGE_API_KEY) list.push(alphaVantage(env.ALPHA_VANTAGE_API_KEY));
   return list;
