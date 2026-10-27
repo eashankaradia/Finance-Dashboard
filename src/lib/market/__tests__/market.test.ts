@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseFrankfurter } from '../fx';
 import { isMarketOpen, marketForSymbol } from '../hours';
-import { NotFoundError, parseAlphaVantageQuote, parseFinnhubQuote, RateLimitError } from '../providers';
+import { configuredProviders, eodhdFundCode, NotFoundError, parseAlphaVantageQuote, parseEodhdEod, parseFinnhubQuote, providerFor, RateLimitError } from '../providers';
 
 // Fixtures follow the providers' documented response formats.
 const av = {
@@ -34,6 +34,31 @@ describe('market data parsing', () => {
     expect(q.price).toBe(232.5);
     expect(q.freshness).toBe('delayed');
     expect(() => parseFinnhubQuote({ c: 0, d: null, dp: null, t: 0 }, { symbol: 'NOPE', currency: 'USD' })).toThrow(NotFoundError);
+  });
+
+  it('parses an EODHD fund price with the day-on-day change', () => {
+    const rows = [
+      { date: '2026-10-26', open: 375.9, high: 375.9, low: 375.9, close: 375.9, adjusted_close: 375.9, volume: 0 },
+      { date: '2026-10-23', open: 372.1, high: 372.1, low: 372.1, close: 372.1, adjusted_close: 372.1, volume: 0 },
+    ];
+    const q = parseEodhdEod(rows, { symbol: 'GB00BG0QP604', currency: 'GBX' }, new Date('2026-10-27T09:00:00Z'));
+    expect(q.price).toBe(375.9);
+    expect(q.change).toBeCloseTo(3.8, 10);
+    expect(q.change_pct).toBeCloseTo(3.8 / 372.1, 10);
+    expect(q.as_of).toBe('2026-10-26T12:00:00.000Z');
+    expect(q.freshness).toBe('end_of_day');
+    expect(() => parseEodhdEod([], { symbol: 'GB00BG0QP604', currency: 'GBX' })).toThrow(NotFoundError);
+    expect(() => parseEodhdEod({ message: 'You exceeded your daily API requests limit' }, { symbol: 'X', currency: 'GBX' })).toThrow(RateLimitError);
+  });
+
+  it('routes ISINs to EODHD and tickers elsewhere', () => {
+    expect(eodhdFundCode('gb00bg0qp604')).toBe('GB00BG0QP604.EUFUND');
+    expect(eodhdFundCode('GB00BN7CMW56.EUFUND')).toBe('GB00BN7CMW56.EUFUND');
+    expect(eodhdFundCode('VUSA.LON')).toBeNull();
+    const providers = configuredProviders({ EODHD_API_KEY: 'k', ALPHA_VANTAGE_API_KEY: 'k' });
+    expect(providerFor('GB00BG0QP604', providers)?.name).toBe('EODHD');
+    expect(providerFor('VUSA.LON', providers)?.name).toBe('Alpha Vantage');
+    expect(marketForSymbol('GB00BG0QP604')).toBe('OTHER');
   });
 
   it('converts Frankfurter rates to GBP per unit', () => {
