@@ -71,6 +71,12 @@ describe('daily update job', () => {
     process.env.EODHD_API_KEY = 'test';
     vi.stubGlobal('fetch', async (url: string) => {
       calls.push(url);
+      if (url.includes('eodhd.com') && url.includes('&to=')) {
+        return new Response(JSON.stringify([
+          { date: '2024-10-28', close: 300.1 },
+          { date: '2024-10-25', close: 299.4 },
+        ]));
+      }
       if (url.includes('eodhd.com')) {
         return new Response(JSON.stringify([
           { date: '2026-10-27', close: 376.5 },
@@ -117,5 +123,28 @@ describe('daily update job', () => {
     expect(calls.filter((c) => c.includes('eodhd.com')).length).toBe(eodhdCalls); // already up to date
     expect(t.account_snapshots).toHaveLength(1);
     expect(t.api_usage[0].calls).toBe(1); // the up-to-date second run spent nothing
+  });
+
+  it('asks for older history at most monthly once a symbol has some', async () => {
+    const t = seed();
+    t.price_history.push({ symbol: 'GB00BG0QP604', price_date: '2025-10-27', close: 320 }, { symbol: 'GB00BG0QP604', price_date: '2026-10-27', close: 376.5 });
+    const res = await runDailyUpdate(fakeDb(t), '2026-10-28');
+
+    const older = calls.find((c) => c.includes('&to='));
+    expect(older).toContain('from=1990-01-01');
+    expect(older).toContain('to=2025-10-26');
+    expect(res.olderHistory.GB00BG0QP604).toBe('2 older day(s) stored');
+    expect(t.price_history.map((r) => r.price_date)).toContain('2024-10-25');
+    expect((t as Record<string, Row[]>).price_history_checks).toEqual([expect.objectContaining({ symbol: 'GB00BG0QP604', earliest: '2025-10-27' })]);
+
+    calls.length = 0;
+    await runDailyUpdate(fakeDb(t), '2026-10-29');
+    expect(calls.some((c) => c.includes('&to='))).toBe(false);
+  });
+
+  it('does not ask for older history on the initial backfill run', async () => {
+    const t = seed();
+    await runDailyUpdate(fakeDb(t), '2026-10-27');
+    expect(calls.some((c) => c.includes('&to='))).toBe(false);
   });
 });

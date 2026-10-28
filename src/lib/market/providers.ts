@@ -33,8 +33,8 @@ export interface Provider {
   dailyLimit?: number;
   supports(symbol: string): boolean;
   quote(req: QuoteRequest, fetcher?: typeof fetch): Promise<MarketPrice>;
-  /** Daily closes from `from` (inclusive) to today, newest first. One API call. */
-  history?(symbol: string, from: string, fetcher?: typeof fetch): Promise<DailyClose[]>;
+  /** Daily closes from `from` to `to` (default today), inclusive, newest first. One API call. */
+  history?(symbol: string, from: string, fetcher?: typeof fetch, to?: string): Promise<DailyClose[]>;
 }
 
 const num = (v: unknown): number | null => {
@@ -186,8 +186,8 @@ export function finnhub(apiKey: string): Provider {
 }
 
 export function eodhd(apiKey: string): Provider {
-  const url = (symbol: string, from: string) =>
-    `https://eodhd.com/api/eod/${encodeURIComponent(eodhdFundCode(symbol)!)}?api_token=${encodeURIComponent(apiKey)}&fmt=json&order=d&from=${from}`;
+  const url = (symbol: string, from: string, to?: string) =>
+    `https://eodhd.com/api/eod/${encodeURIComponent(eodhdFundCode(symbol)!)}?api_token=${encodeURIComponent(apiKey)}&fmt=json&order=d&from=${from}${to ? `&to=${to}` : ''}`;
   return {
     name: 'EODHD',
     dailyLimit: 20,
@@ -196,8 +196,8 @@ export function eodhd(apiKey: string): Provider {
       const from = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
       return parseEodhdEod(await getJson(url(req.symbol, from), fetcher), req);
     },
-    async history(symbol, from, fetcher = fetch) {
-      return parseEodhdRows(await getJson(url(symbol, from), fetcher));
+    async history(symbol, from, fetcher = fetch, to) {
+      return parseEodhdRows(await getJson(url(symbol, from, to), fetcher));
     },
   };
 }

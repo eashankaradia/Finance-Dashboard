@@ -69,7 +69,19 @@ function tickDate(span: number) {
 }
 
 /** Portfolio (or account) value over time, with net invested capital. */
-export function ValueChart({ points, showInvested = true, height = 240 }: { points: SeriesPoint[]; showInvested?: boolean; height?: number }) {
+export function ValueChart({
+  points,
+  showInvested = true,
+  height = 240,
+  label = 'Value',
+  currency = 'GBP',
+}: {
+  points: SeriesPoint[];
+  showInvested?: boolean;
+  height?: number;
+  label?: string;
+  currency?: string;
+}) {
   const span = points.length > 1 ? (Date.parse(points[points.length - 1].date) - Date.parse(points[0].date)) / 86400000 : 0;
   const showDots = points.length <= 60;
   const id = React.useId().replace(/:/g, '');
@@ -97,7 +109,14 @@ export function ValueChart({ points, showInvested = true, height = 240 }: { poin
             </defs>
             <CartesianGrid vertical={false} stroke={GRID} />
             <XAxis dataKey="date" tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={tickDate(span)} minTickGap={28} />
-            <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={compact} width={52} domain={['auto', 'auto']} />
+            <YAxis
+              tick={AXIS_TICK}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={currency === 'GBP' ? compact : (v: number) => (currency === 'GBX' ? `${+v.toPrecision(4)}p` : formatMoney(v, currency, { compact: true }))}
+              width={52}
+              domain={['auto', 'auto']}
+            />
             <Tooltip
               cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeDasharray: '3 3' }}
               content={({ active, payload }: TooltipProps<number, string>) => {
@@ -106,7 +125,7 @@ export function ValueChart({ points, showInvested = true, height = 240 }: { poin
                 return (
                   <TooltipShell>
                     <p className="mb-1 font-medium">{formatDate(p.date, 'long')}</p>
-                    <Row swatch={SERIES[0]} label="Value" value={formatMoney(p.value)} />
+                    <Row swatch={SERIES[0]} label={label} value={formatMoney(p.value, currency)} />
                     {showInvested ? <Row swatch="hsl(var(--muted-foreground))" dashed label="Net invested" value={formatMoney(p.invested)} /> : null}
                     {showInvested ? <Row label="Gain / loss" value={<span className={p.gain >= 0 ? 'text-gain' : 'text-loss'}>{formatMoney(p.gain, 'GBP', { sign: true })}</span>} /> : null}
                     <p className={cn('mt-1.5 border-t pt-1.5', p.estimated ? 'text-warn' : 'text-muted-foreground')}>
@@ -125,7 +144,7 @@ export function ValueChart({ points, showInvested = true, height = 240 }: { poin
       </div>
       <Legend
         items={[
-          { label: 'Value', color: SERIES[0] },
+          { label, color: SERIES[0] },
           ...(showInvested ? [{ label: 'Net invested', color: 'hsl(var(--muted-foreground))', dashed: true }] : []),
           ...(showDots ? [{ label: 'Estimated point', color: SERIES[0], hollow: true }] : []),
         ]}
