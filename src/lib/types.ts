@@ -51,6 +51,8 @@ export interface Account {
   notes: string | null;
   valuation_mode: ValuationMode;
   cash_balance: number;
+  /** Yearly platform/account fee in percent (0.45 = 0.45%), for the fees view. */
+  platform_fee_pct?: number | null;
   is_archived: boolean;
   created_at: ISODateTime;
 }
@@ -137,6 +139,8 @@ export interface Asset {
   price_mode: 'market' | 'manual';
   manual_price: number | null;
   manual_price_at: ISODateTime | null;
+  /** Fund ongoing charge (OCF) in percent a year, for the fees view. */
+  ongoing_charge_pct?: number | null;
   on_watchlist: boolean;
   created_at: ISODateTime;
 }

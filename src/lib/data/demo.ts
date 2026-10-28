@@ -167,7 +167,7 @@ export function buildDemoDataset(today = todayISO()): Dataset {
   const transferMonth = monthEnd(addMonths(today, -4));
   const transferDate = transferMonth.slice(0, 8) + '06';
 
-  const isa = account({ name: 'Vanguard ISA', provider: 'Vanguard', account_type: 'stocks_shares_isa', reference: 'ISA-••••4821', notes: 'Global index tracker' });
+  const isa = account({ name: 'Vanguard ISA', provider: 'Vanguard', account_type: 'stocks_shares_isa', reference: 'ISA-••••4821', notes: 'Global index tracker', platform_fee_pct: 0.15 });
   simulate(isa, { opening: 0, monthly: 400, mean: 0.007, vol: 0.03, extraFlows: { [transferMonth.slice(0, 7)]: 2000 } });
 
   const gia = account({ name: 'Trading 212', provider: 'Trading 212', account_type: 'gia', valuation_mode: 'holdings', cash_balance: 118.4 });
@@ -214,16 +214,17 @@ export function buildDemoDataset(today = todayISO()): Dataset {
     return h;
   };
 
-  const vwrp = asset({ name: 'Vanguard FTSE All-World UCITS ETF (Acc)', symbol: 'VWRP.LON', exchange: 'LSE', asset_type: 'etf', currency: 'GBP' });
+  const vwrp = asset({ name: 'Vanguard FTSE All-World UCITS ETF (Acc)', symbol: 'VWRP.LON', exchange: 'LSE', asset_type: 'etf', currency: 'GBP', ongoing_charge_pct: 0.19 });
   const ls80 = asset({
     name: 'Vanguard LifeStrategy 80% Equity Fund',
     asset_type: 'fund',
     currency: 'GBP',
+    ongoing_charge_pct: 0.22,
     price_mode: 'manual',
     manual_price: 268.41,
     manual_price_at: new Date(Date.now() - 2 * 86400000).toISOString(),
   });
-  const vusa = asset({ name: 'Vanguard S&P 500 UCITS ETF', symbol: 'VUSA.LON', exchange: 'LSE', asset_type: 'etf', currency: 'GBP' });
+  const vusa = asset({ name: 'Vanguard S&P 500 UCITS ETF', symbol: 'VUSA.LON', exchange: 'LSE', asset_type: 'etf', currency: 'GBP', ongoing_charge_pct: 0.07 });
   const lloy = asset({ name: 'Lloyds Banking Group plc', symbol: 'LLOY.LON', exchange: 'LSE', asset_type: 'stock', currency: 'GBX' });
   const aapl = asset({ name: 'Apple Inc.', symbol: 'AAPL', exchange: 'NASDAQ', asset_type: 'stock', currency: 'USD' });
   asset({ name: 'Microsoft Corp.', symbol: 'MSFT', exchange: 'NASDAQ', asset_type: 'stock', currency: 'USD', on_watchlist: true });

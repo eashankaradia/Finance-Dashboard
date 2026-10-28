@@ -9,6 +9,7 @@ import { Segmented, Tabs, TabsContent, TabsList, TabsTrigger } from '@/component
 import { AllocationChart, ValueChart } from '@/components/charts';
 import { EmptyState, ErrorState, GainText, Money, Notice, PageSkeleton, PercentText, ReturnValue, StatCard } from '@/components/common';
 import { useData } from '@/components/providers/data-provider';
+import { SECONDARY_NAV } from '@/components/layout/nav';
 import { AccountRow, HoldingCard, TransactionRow } from '@/components/shared/lists';
 import { AccountDialog } from '@/components/forms/account-form';
 import { allocationByAccount, allocationByAssetClass, allocationByHolding } from '@/lib/finance/allocation';
@@ -95,6 +96,16 @@ export default function DashboardPage() {
           )}
         </div>
       </Card>
+
+      {/* Shortcuts to pages that aren't in the bottom tabs */}
+      <nav aria-label="More" className="grid grid-cols-3 gap-2 lg:hidden">
+        {SECONDARY_NAV.map(({ href, label, icon: Icon }) => (
+          <Link key={href} href={href} className="flex items-center justify-center gap-1.5 rounded-xl border bg-card px-2 py-2.5 text-sm font-medium shadow-sm active:bg-muted">
+            <Icon className="size-4 text-brand" aria-hidden />
+            {label}
+          </Link>
+        ))}
+      </nav>
 
       {discrepancies.length > 0 ? (
         <Notice tone="warn">

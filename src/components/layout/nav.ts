@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BarChart3, Home, Landmark, LineChart, Settings } from 'lucide-react';
+import { ArrowLeftRight, BarChart3, CalendarDays, Home, Landmark, LineChart, PiggyBank, Settings } from 'lucide-react';
 
 export const NAV = [
   { href: '/', label: 'Home', icon: Home },
@@ -8,7 +8,11 @@ export const NAV = [
   { href: '/settings', label: 'Settings', icon: Settings },
 ] as const;
 
-export const SECONDARY_NAV = [{ href: '/insights', label: 'Insights', icon: BarChart3 }] as const;
+export const SECONDARY_NAV = [
+  { href: '/today', label: 'Today', icon: CalendarDays },
+  { href: '/insights', label: 'Insights', icon: BarChart3 },
+  { href: '/plan', label: 'Plan', icon: PiggyBank },
+] as const;
 
 export function isActive(pathname: string, href: string): boolean {
   return href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);

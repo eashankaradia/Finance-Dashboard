@@ -60,6 +60,8 @@ const NUMERIC_FIELDS = new Set([
   'change',
   'change_pct',
   'close',
+  'platform_fee_pct',
+  'ongoing_charge_pct',
 ]);
 
 export function normaliseRow<T>(row: T): T {
