@@ -12,8 +12,10 @@ import { isMarketOpen, marketForSymbol, todayInMarket } from './hours';
  *   tier, 60 requests/minute. Used for US tickers when configured because the
  *   allowance is far more generous.
  * - EODHD (EODHD_API_KEY, optional): UK unit trusts / OEICs, which aren't
- *   exchange-listed, looked up by ISIN on its EUFUND "exchange". Free tier:
- *   20 requests/day, end-of-day data only. Funds are priced once a day anyway.
+ *   exchange-listed, looked up by ISIN on its EUFUND "exchange" (end-of-day,
+ *   funds are priced once a day anyway). Also US and London shares/ETFs
+ *   (15-minute delayed quotes), used when no other provider covers them.
+ *   Free tier: 20 requests/day shared across both.
  *
  * Neither is labelled real-time in the app.
  */
@@ -109,6 +111,45 @@ export function eodhdFundCode(symbol: string): string | null {
   return ISIN_RE.test(isin) ? `${isin}.EUFUND` : null;
 }
 
+/** Shares/ETFs EODHD handles: US tickers (NVDA → NVDA.US) and London (.LON/.L → .LSE). */
+export function eodhdStockCode(symbol: string): string | null {
+  const s = symbol.toUpperCase();
+  const market = marketForSymbol(s);
+  if (market === 'LSE') return `${s.replace(/^LON:/, '').replace(/\.(LON|L)$/, '')}.LSE`;
+  if (market === 'US') return `${s.replace(/\.(?=[AB]$)/, '-')}.US`;
+  return null;
+}
+
+
+/** Parses an EODHD /real-time response (15-minute delayed on the free plan). */
+export function parseEodhdRealtime(json: unknown, req: QuoteRequest, now = new Date()): MarketPrice {
+  const body = json as Record<string, unknown>;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Unexpected response');
+  if (body.message || body.error) {
+    const msg = String(body.message ?? body.error);
+    if (/limit/i.test(msg)) throw new RateLimitError('EODHD daily limit reached');
+    throw new Error(msg.slice(0, 200));
+  }
+  const price = num(body.close);
+  const t = num(body.timestamp);
+  if (price == null || price === 0 || !t) throw new NotFoundError(`No quote for ${req.symbol}`);
+  const market = marketForSymbol(req.symbol);
+  const pct = num(body.change_p);
+  const open = isMarketOpen(market, now);
+  return {
+    symbol: req.symbol,
+    price,
+    currency: req.currency,
+    change: num(body.change),
+    change_pct: pct == null ? null : pct / 100,
+    as_of: new Date(t * 1000).toISOString(),
+    fetched_at: now.toISOString(),
+    source: 'EODHD',
+    freshness: open ? 'delayed' : 'end_of_day',
+    market_open: open,
+  };
+}
+
 /** A daily closing price. */
 export interface DailyClose {
   date: string;
@@ -185,19 +226,24 @@ export function finnhub(apiKey: string): Provider {
   };
 }
 
-export function eodhd(apiKey: string): Provider {
-  const url = (symbol: string, from: string, to?: string) =>
-    `https://eodhd.com/api/eod/${encodeURIComponent(eodhdFundCode(symbol)!)}?api_token=${encodeURIComponent(apiKey)}&fmt=json&order=d&from=${from}${to ? `&to=${to}` : ''}`;
+export function eodhd(apiKey: string, scope: 'funds' | 'stocks' = 'funds'): Provider {
+  const code = scope === 'funds' ? eodhdFundCode : eodhdStockCode;
+  const token = `api_token=${encodeURIComponent(apiKey)}&fmt=json`;
+  const eod = (symbol: string, from: string, to?: string) =>
+    `https://eodhd.com/api/eod/${encodeURIComponent(code(symbol)!)}?${token}&order=d&from=${from}${to ? `&to=${to}` : ''}`;
   return {
     name: 'EODHD',
     dailyLimit: 20,
-    supports: (symbol) => eodhdFundCode(symbol) != null,
+    supports: (symbol) => code(symbol) != null,
     async quote(req, fetcher = fetch) {
+      if (scope === 'stocks') {
+        return parseEodhdRealtime(await getJson(`https://eodhd.com/api/real-time/${encodeURIComponent(code(req.symbol)!)}?${token}`, fetcher), req);
+      }
       const from = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
-      return parseEodhdEod(await getJson(url(req.symbol, from), fetcher), req);
+      return parseEodhdEod(await getJson(eod(req.symbol, from), fetcher), req);
     },
     async history(symbol, from, fetcher = fetch, to) {
-      return parseEodhdRows(await getJson(url(symbol, from, to), fetcher));
+      return parseEodhdRows(await getJson(eod(symbol, from, to), fetcher));
     },
   };
 }
@@ -209,6 +255,8 @@ export function configuredProviders(env: Record<string, string | undefined> = pr
   if (env.EODHD_API_KEY) list.push(eodhd(env.EODHD_API_KEY));
   if (env.FINNHUB_API_KEY) list.push(finnhub(env.FINNHUB_API_KEY));
   if (env.ALPHA_VANTAGE_API_KEY) list.push(alphaVantage(env.ALPHA_VANTAGE_API_KEY));
+  // Shares and ETFs fall back to EODHD when nothing above covers them.
+  if (env.EODHD_API_KEY) list.push(eodhd(env.EODHD_API_KEY, 'stocks'));
   return list;
 }
 

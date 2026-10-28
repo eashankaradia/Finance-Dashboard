@@ -31,7 +31,8 @@ export async function recordApiCalls(writer: Db | null | undefined, calls: Map<s
 
 /** Today's (UTC) usage for each configured provider that has a daily cap. */
 export async function readApiUsage(reader: Db | null | undefined, providers: Provider[]): Promise<ProviderUsage[]> {
-  const capped = providers.filter((p) => p.dailyLimit);
+  // EODHD appears twice (funds first, shares last) but has one allowance.
+  const capped = providers.filter((p, i) => p.dailyLimit && providers.findIndex((q) => q.name === p.name) === i);
   if (!reader || capped.length === 0) return [];
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await reader.from('api_usage').select('provider, calls').eq('usage_date', today);

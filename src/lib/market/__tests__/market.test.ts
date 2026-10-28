@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseFrankfurter } from '../fx';
 import { isMarketOpen, marketForSymbol } from '../hours';
-import { configuredProviders, eodhdFundCode, NotFoundError, parseAlphaVantageQuote, parseEodhdEod, parseFinnhubQuote, providerFor, RateLimitError } from '../providers';
+import { configuredProviders, eodhdFundCode, eodhdStockCode, NotFoundError, parseEodhdRealtime, parseAlphaVantageQuote, parseEodhdEod, parseFinnhubQuote, providerFor, RateLimitError } from '../providers';
 
 // Fixtures follow the providers' documented response formats.
 const av = {
@@ -72,5 +72,33 @@ describe('market data parsing', () => {
     expect(isMarketOpen('LSE', new Date('2026-10-24T10:00:00Z'))).toBe(false); // Saturday
     expect(isMarketOpen('US', new Date('2026-10-27T14:00:00Z'))).toBe(true); // 10:00 New York
     expect(isMarketOpen('US', new Date('2026-10-27T21:30:00Z'))).toBe(false);
+  });
+
+  it('prices shares with EODHD when it is the only provider', async () => {
+    const providers = configuredProviders({ EODHD_API_KEY: 'k' });
+    const p = providerFor('NVDA', providers)!;
+    expect(p.name).toBe('EODHD');
+    expect(eodhdStockCode('NVDA')).toBe('NVDA.US');
+    expect(eodhdStockCode('BRK.B')).toBe('BRK-B.US');
+    expect(eodhdStockCode('VUSA.LON')).toBe('VUSA.LSE');
+    expect(eodhdStockCode('GB00BG0QP604')).toBeNull();
+
+    const urls: string[] = [];
+    const q = await p.quote({ symbol: 'NVDA', currency: 'USD' }, (async (u: string) => {
+      urls.push(u);
+      return new Response(JSON.stringify({ code: 'NVDA.US', timestamp: 1793217600, close: 186.26, previousClose: 183.1, change: 3.16, change_p: 1.7258 }));
+    }) as typeof fetch);
+    expect(urls[0]).toContain('/real-time/NVDA.US?');
+    expect(q).toMatchObject({ symbol: 'NVDA', price: 186.26, currency: 'USD', change: 3.16, source: 'EODHD' });
+    expect(q.change_pct).toBeCloseTo(0.017258, 6);
+
+    // Other providers still come first for shares; funds still go to EODHD.
+    const both = configuredProviders({ EODHD_API_KEY: 'k', FINNHUB_API_KEY: 'k' });
+    expect(providerFor('NVDA', both)?.name).toBe('Finnhub');
+    expect(providerFor('GB00BG0QP604', both)?.name).toBe('EODHD');
+  });
+
+  it('rejects empty EODHD real-time quotes', () => {
+    expect(() => parseEodhdRealtime({ code: 'XYZ.US', timestamp: 'NA', close: 'NA' }, { symbol: 'XYZ', currency: 'USD' })).toThrow(NotFoundError);
   });
 });
