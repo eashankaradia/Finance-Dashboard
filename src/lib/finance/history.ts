@@ -60,7 +60,20 @@ export const RETURN_PERIODS = [
   { key: '3M', months: 3 },
   { key: '6M', months: 6 },
   { key: '1Y', months: 12 },
+  { key: '3Y', months: 36 },
+  { key: '5Y', months: 60 },
 ] as const;
+
+/**
+ * First date we know the holding's units for: its first linked trade, or the
+ * account's first valuation or opening date, whichever is earliest. Before
+ * that, valuing today's units at old prices would be made up, so value
+ * history starts here (price history can go back further).
+ */
+export function knownSince(holding: Holding, transactions: Transaction[], firstValuation: ISODate | null, openedOn: ISODate | null): ISODate | null {
+  const dates = [firstValuation, openedOn, ...transactions.filter((t) => t.holding_id === holding.id).map((t) => t.occurred_on)].filter((d): d is ISODate => !!d);
+  return dates.length ? dates.reduce((a, b) => (a < b ? a : b)) : null;
+}
 
 /**
  * Price return from the period start to the latest close. Null when history

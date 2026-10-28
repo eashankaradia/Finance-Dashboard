@@ -5,7 +5,7 @@ import { normaliseRow, TABLES, type Collection } from '../data/repository';
 import { buildPortfolio } from '../finance/portfolio';
 import type { Dataset, MarketPrice } from '../types';
 import { fetchFxRates } from './fx';
-import { configuredProviders, providerFor, type DailyClose } from './providers';
+import { configuredProviders, providerFor, RateLimitError, type DailyClose } from './providers';
 import { getPrices, recordApiCalls } from './service';
 
 /**
@@ -15,7 +15,9 @@ import { getPrices, recordApiCalls } from './service';
  *    closes in finance.price_history. Providers with a history endpoint
  *    (EODHD funds) backfill up to a year on the first run and then fetch
  *    only the missing days, one request per symbol. Others store today's
- *    quote as that day's close.
+ *    quote as that day's close. About once a month it also asks for anything
+ *    older than what's stored, which a paid plan can supply (EODHD's free
+ *    plan stops at one year, so that request comes back empty or refused).
  * 2. Valuations: for every account valued from holdings, save today's
  *    calculated value as a snapshot, unless one already exists for today.
  *    This builds the account's value history without opening the app.
@@ -26,11 +28,14 @@ import { getPrices, recordApiCalls } from './service';
 export interface DailyResult {
   date: string;
   prices: Record<string, string>;
+  olderHistory: Record<string, string>;
   snapshots: { account_id: string; value: number }[];
   skippedAccounts: number;
 }
 
 const BACKFILL_DAYS = 365;
+const OLDER_HISTORY_FROM = '1990-01-01';
+const OLDER_HISTORY_RETRY_DAYS = 30;
 
 async function lastStoredDates(db: Db, symbols: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
@@ -39,6 +44,11 @@ async function lastStoredDates(db: Db, symbols: string[]): Promise<Map<string, s
     if (data?.[0]) out.set(symbol, data[0].price_date);
   }
   return out;
+}
+
+async function earliestStoredDate(db: Db, symbol: string): Promise<string | null> {
+  const { data } = await db.from('price_history').select('price_date').eq('symbol', symbol).order('price_date', { ascending: true }).limit(1);
+  return data?.[0]?.price_date ?? null;
 }
 
 async function storeCloses(db: Db, symbol: string, rows: DailyClose[], source: string): Promise<void> {
@@ -50,7 +60,7 @@ async function storeCloses(db: Db, symbol: string, rows: DailyClose[], source: s
 }
 
 export async function runDailyUpdate(db: Db, today = todayISO()): Promise<DailyResult> {
-  const result: DailyResult = { date: today, prices: {}, snapshots: [], skippedAccounts: 0 };
+  const result: DailyResult = { date: today, prices: {}, olderHistory: {}, snapshots: [], skippedAccounts: 0 };
 
   // Everyone's data, grouped by user below.
   const tables = await Promise.all(
@@ -91,6 +101,13 @@ export async function runDailyUpdate(db: Db, today = todayISO()): Promise<DailyR
       await recordApiCalls(db, new Map([[provider.name, 1]]));
       const rows = await provider.history(symbol, from);
       await storeCloses(db, symbol, rows, provider.name);
+      // The first backfill already asked for as much as the plan gives, so
+      // leave older history for a month.
+      if (!lastDate) {
+        await db
+          .from('price_history_checks')
+          .upsert({ symbol, checked_at: new Date().toISOString(), earliest: rows[rows.length - 1]?.date ?? null, result: 'initial backfill' }, { onConflict: 'symbol' });
+      }
       if (rows[0]) {
         const latest: MarketPrice = {
           symbol,
@@ -110,6 +127,34 @@ export async function runDailyUpdate(db: Db, today = todayISO()): Promise<DailyR
     } catch (e) {
       result.prices[symbol] = e instanceof Error ? e.message : 'failed';
     }
+  }
+
+  // 1b. Older history, at most monthly per symbol.
+  const { data: checks } = await db.from('price_history_checks').select('*').in('symbol', symbols.length ? symbols : ['-']);
+  const lastCheck = new Map((checks ?? []).map((c) => [String(c.symbol), String(c.checked_at).slice(0, 10)]));
+  for (const symbol of symbols) {
+    const provider = providerFor(symbol, providers);
+    if (!provider?.history) continue;
+    const checked = lastCheck.get(symbol);
+    if (checked && checked > addDays(today, -OLDER_HISTORY_RETRY_DAYS)) continue;
+    const earliest = await earliestStoredDate(db, symbol);
+    if (!earliest) continue;
+    let outcome: string;
+    try {
+      await recordApiCalls(db, new Map([[provider.name, 1]]));
+      const rows = (await provider.history(symbol, OLDER_HISTORY_FROM, undefined, addDays(earliest, -1))).filter((r) => r.date < earliest);
+      await storeCloses(db, symbol, rows, provider.name);
+      outcome = rows.length ? `${rows.length} older day(s) stored` : 'no older history available';
+    } catch (e) {
+      // Out of requests today: try again tomorrow rather than next month.
+      if (e instanceof RateLimitError) {
+        result.olderHistory[symbol] = e.message;
+        continue;
+      }
+      outcome = `older history: ${e instanceof Error ? e.message : 'failed'}`;
+    }
+    await db.from('price_history_checks').upsert({ symbol, checked_at: new Date().toISOString(), earliest, result: outcome.slice(0, 200) }, { onConflict: 'symbol' });
+    result.olderHistory[symbol] = outcome;
   }
 
   if (quoteOnly.length) {

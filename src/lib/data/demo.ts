@@ -279,7 +279,7 @@ export function demoPriceHistory(symbol: string, today = todayISO()): { date: st
   if (latest == null) return [];
   const rand = rng([...symbol].reduce((s, c) => s * 31 + c.charCodeAt(0), 7) >>> 0);
   const days: string[] = [];
-  for (let d = addDays(today, -365); d <= today; d = addDays(d, 1)) {
+  for (let d = addDays(today, -365 * 6); d <= today; d = addDays(d, 1)) {
     const wd = new Date(`${d}T12:00:00Z`).getUTCDay();
     if (wd !== 0 && wd !== 6) days.push(d);
   }
@@ -288,7 +288,7 @@ export function demoPriceHistory(symbol: string, today = todayISO()): { date: st
   let price = latest;
   for (let i = days.length - 1; i >= 0; i--) {
     out.push({ date: days[i], close: round2(price) });
-    price = price / (1 + (rand() - 0.47) * 0.024);
+    price = price / (1 + (rand() - 0.485) * 0.024);
   }
   return out.reverse();
 }
