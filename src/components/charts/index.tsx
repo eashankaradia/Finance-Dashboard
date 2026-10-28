@@ -22,6 +22,7 @@ import {
 import { formatDate, formatMoney, formatMonth, formatPercent } from '@/lib/format';
 import type { SeriesPoint } from '@/lib/finance/portfolio';
 import type { PeriodTotal } from '@/lib/finance/flows';
+import type { ProjectionPoint } from '@/lib/finance/projection';
 import { cn } from '@/lib/utils';
 
 export const SERIES = Array.from({ length: 8 }, (_, i) => `var(--series-${i + 1})`);
@@ -315,6 +316,57 @@ export function ComparisonChart({ rows, height }: { rows: { label: string; value
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+/** Projected value by year: with contributions, without, and money paid in. */
+export function ProjectionChart({ points, height = 240 }: { points: ProjectionPoint[]; height?: number }) {
+  const id = React.useId().replace(/:/g, '');
+  const NONE = SERIES[1];
+  const PAID = 'hsl(var(--muted-foreground))';
+  return (
+    <div className="space-y-2">
+      <div style={{ height }} role="img" aria-label="Projected value chart">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={points} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id={`proj-${id}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={SERIES[0]} stopOpacity={0.22} />
+                <stop offset="100%" stopColor={SERIES[0]} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} stroke={GRID} />
+            <XAxis dataKey="year" tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={(y: number) => (y === 0 ? 'Now' : `${y}y`)} minTickGap={20} />
+            <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={compact} width={52} />
+            <Tooltip
+              cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeDasharray: '3 3' }}
+              content={({ active, payload }: TooltipProps<number, string>) => {
+                if (!active || !payload?.length) return null;
+                const p = payload[0].payload as ProjectionPoint;
+                return (
+                  <TooltipShell>
+                    <p className="mb-1 font-medium">{p.year === 0 ? 'Today' : `After ${p.year} year${p.year === 1 ? '' : 's'}`}</p>
+                    <Row swatch={SERIES[0]} label="With contributions" value={formatMoney(p.plan)} />
+                    <Row swatch={NONE} label="No new money" value={formatMoney(p.noContributions)} />
+                    <Row swatch={PAID} dashed label="Paid in" value={formatMoney(p.paidIn)} />
+                  </TooltipShell>
+                );
+              }}
+            />
+            <Line type="monotone" dataKey="paidIn" stroke={PAID} strokeDasharray="4 4" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="noContributions" stroke={NONE} strokeWidth={2} dot={false} isAnimationActive={false} />
+            <Area type="monotone" dataKey="plan" stroke={SERIES[0]} strokeWidth={2} fill={`url(#proj-${id})`} dot={false} isAnimationActive={false} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+      <Legend
+        items={[
+          { label: 'With contributions', color: SERIES[0] },
+          { label: 'No new money', color: NONE },
+          { label: 'Paid in', color: PAID, dashed: true },
+        ]}
+      />
     </div>
   );
 }

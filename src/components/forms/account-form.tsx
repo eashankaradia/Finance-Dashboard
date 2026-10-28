@@ -30,11 +30,13 @@ export function AccountDialog({ open, onOpenChange, account }: { open: boolean; 
     e.preventDefault();
     const [cash, cashErr] = form.cash_balance.trim() ? requireAmount(form.cash_balance, { allowZero: true, label: 'Cash balance' }) : ['0', null];
     const [opening, openingErr] = account ? [null, null] : optionalAmount(form.opening_value, 'Current value');
+    const [fee, feeErr] = optionalAmount(form.platform_fee_pct, 'Platform fee');
     const errs: Errors = {
       name: form.name.trim() ? null : 'Give the account a name',
       opened_on: form.opened_on ? requireDate(form.opened_on) : null,
       cash_balance: cashErr,
       opening_value: openingErr,
+      platform_fee_pct: feeErr ?? (fee != null && Number(fee) > 10 ? 'Enter a yearly percentage, e.g. 0.45' : null),
     };
     setErrors(errs);
     if (hasErrors(errs)) return;
@@ -49,6 +51,7 @@ export function AccountDialog({ open, onOpenChange, account }: { open: boolean; 
       notes: form.notes.trim() || null,
       valuation_mode: form.valuation_mode as Account['valuation_mode'],
       cash_balance: Number(cash),
+      platform_fee_pct: fee != null ? Number(fee) : null,
     };
     if (account) {
       if (await update('accounts', account.id, row, 'Account updated')) onOpenChange(false);
@@ -121,6 +124,9 @@ export function AccountDialog({ open, onOpenChange, account }: { open: boolean; 
               <Input id="acc-opened" type="date" value={form.opened_on} max={todayISO()} onChange={set('opened_on')} />
             </Field>
           </div>
+          <Field label="Platform fee (% a year)" htmlFor="acc-fee" error={errors.platform_fee_pct} hint="Optional, e.g. 0.45. Used in Plan → Fees and projections.">
+            <Input id="acc-fee" inputMode="decimal" value={form.platform_fee_pct} onChange={set('platform_fee_pct')} placeholder="Optional" />
+          </Field>
           <Field label="Account number / reference" htmlFor="acc-ref" hint="Private to you. Shown masked in lists.">
             <Input id="acc-ref" value={form.reference} onChange={set('reference')} autoComplete="off" />
           </Field>
@@ -145,6 +151,7 @@ function initial(a?: Account) {
     notes: a?.notes ?? '',
     valuation_mode: a?.valuation_mode ?? 'snapshot',
     cash_balance: a ? String(a.cash_balance ?? 0) : '',
+    platform_fee_pct: a?.platform_fee_pct != null ? String(a.platform_fee_pct) : '',
     opening_value: '',
   };
 }

@@ -37,6 +37,7 @@ export function useAssetFields(asset?: Asset) {
     currency: asset?.currency ?? 'GBX',
     price_mode: asset?.price_mode ?? 'market',
     manual_price: asset?.manual_price != null ? String(asset.manual_price) : '',
+    ongoing_charge_pct: asset?.ongoing_charge_pct != null ? String(asset.ongoing_charge_pct) : '',
   });
   const [fields, setFields] = React.useState(blank);
   const reset = React.useCallback(() => setFields(blank()), [asset]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -44,7 +45,9 @@ export function useAssetFields(asset?: Asset) {
   function validate(): [Partial<Asset> | null, Errors] {
     const symbol = fields.symbol.trim().toUpperCase();
     const [manual, manualErr] = optionalAmount(fields.manual_price, 'Price');
+    const [ocf, ocfErr] = optionalAmount(fields.ongoing_charge_pct, 'Ongoing charge');
     const errs: Errors = {
+      ongoing_charge_pct: ocfErr ?? (ocf != null && Number(ocf) > 10 ? 'Enter a yearly percentage, e.g. 0.13' : null),
       name: fields.name.trim() ? null : 'Enter a name',
       symbol: symbol && !SYMBOL_RE.test(symbol) ? 'Use letters, numbers and dots only (e.g. VUSA.LON)' : null,
       manual_price: fields.price_mode === 'manual' && !manual ? manualErr ?? 'Enter the latest price' : manualErr,
@@ -61,6 +64,7 @@ export function useAssetFields(asset?: Asset) {
         price_mode: symbol ? (fields.price_mode as Asset['price_mode']) : 'manual',
         manual_price: manual != null ? Number(manual) : null,
         manual_price_at: priceChanged ? new Date().toISOString() : asset?.manual_price_at ?? null,
+        ongoing_charge_pct: ocf != null ? Number(ocf) : null,
       },
       errs,
     ];
@@ -125,6 +129,9 @@ export function useAssetFields(asset?: Asset) {
           <Input id="as-price" inputMode="decimal" value={fields.manual_price} onChange={(e) => setFields({ ...fields, manual_price: e.target.value })} placeholder="Optional" />
         </Field>
       </div>
+      <Field label="Ongoing charge (OCF, % a year)" htmlFor="as-ocf" error={errors.ongoing_charge_pct} hint="Optional, from the fund's factsheet, e.g. 0.13. Used in Plan → Fees and projections.">
+        <Input id="as-ocf" inputMode="decimal" value={fields.ongoing_charge_pct} onChange={(e) => setFields({ ...fields, ongoing_charge_pct: e.target.value })} placeholder="Optional" />
+      </Field>
     </div>
   );
 
