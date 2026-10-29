@@ -43,7 +43,9 @@ export function useAssetFields(asset?: Asset) {
   const reset = React.useCallback(() => setFields(blank()), [asset]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function validate(): [Partial<Asset> | null, Errors] {
-    const symbol = fields.symbol.trim().toUpperCase();
+    // A bare London ticker (e.g. VALL with exchange LSE) would be looked up as US.
+    const raw = fields.symbol.trim().toUpperCase();
+    const symbol = /^(LSE|LON|LONDON)/i.test(fields.exchange.trim()) && /^[A-Z0-9]{1,6}$/.test(raw) ? `${raw}.LON` : raw;
     const [manual, manualErr] = optionalAmount(fields.manual_price, 'Price');
     const [ocf, ocfErr] = optionalAmount(fields.ongoing_charge_pct, 'Ongoing charge');
     const errs: Errors = {
@@ -103,7 +105,7 @@ export function useAssetFields(asset?: Asset) {
             ))}
           </NativeSelect>
         </Field>
-        <Field label="Quoted in" htmlFor="as-ccy" hint="Most LSE shares are quoted in pence.">
+        <Field label="Quoted in" htmlFor="as-ccy" hint="Most LSE shares are in pence; many ETFs are in £. Match your app.">
           <NativeSelect id="as-ccy" value={fields.currency} onChange={(e) => setFields({ ...fields, currency: e.target.value })}>
             {PRICE_CURRENCIES.map((c) => (
               <option key={c.value} value={c.value}>
