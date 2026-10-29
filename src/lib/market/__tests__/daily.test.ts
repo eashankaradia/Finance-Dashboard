@@ -147,4 +147,17 @@ describe('daily update job', () => {
     await runDailyUpdate(fakeDb(t), '2026-10-27');
     expect(calls.some((c) => c.includes('&to='))).toBe(false);
   });
+
+  it('uses a history-capable provider for shares even when another quotes them first', async () => {
+    process.env.FINNHUB_API_KEY = 'f';
+    try {
+      const t = seed();
+      (t.assets as Row[]).push({ id: 'nv', user_id: U, name: 'Nvidia', symbol: 'NVDA', currency: 'USD', price_mode: 'market', asset_type: 'stock', created_at: '2026-10-01T00:00:00Z' });
+      await runDailyUpdate(fakeDb(t), '2026-10-27');
+      expect(calls.some((c) => c.includes('/eod/NVDA.US?'))).toBe(true);
+      expect(calls.some((c) => c.includes('finnhub.io'))).toBe(false);
+    } finally {
+      delete process.env.FINNHUB_API_KEY;
+    }
+  });
 });

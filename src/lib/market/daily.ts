@@ -46,6 +46,11 @@ async function lastStoredDates(db: Db, symbols: string[]): Promise<Map<string, s
   return out;
 }
 
+/** Prefer a provider that can supply daily history, even if another quotes first. */
+function historyProviderFor(symbol: string, providers: ReturnType<typeof configuredProviders>) {
+  return providers.find((p) => p.history && p.supports(symbol)) ?? providerFor(symbol, providers);
+}
+
 async function earliestStoredDate(db: Db, symbol: string): Promise<string | null> {
   const { data } = await db.from('price_history').select('price_date').eq('symbol', symbol).order('price_date', { ascending: true }).limit(1);
   return data?.[0]?.price_date ?? null;
@@ -82,7 +87,7 @@ export async function runDailyUpdate(db: Db, today = todayISO()): Promise<DailyR
 
   const quoteOnly: { symbol: string; currency: string }[] = [];
   for (const symbol of symbols) {
-    const provider = providerFor(symbol, providers);
+    const provider = historyProviderFor(symbol, providers);
     if (!provider) {
       result.prices[symbol] = 'no provider';
       continue;
@@ -133,7 +138,7 @@ export async function runDailyUpdate(db: Db, today = todayISO()): Promise<DailyR
   const { data: checks } = await db.from('price_history_checks').select('*').in('symbol', symbols.length ? symbols : ['-']);
   const lastCheck = new Map((checks ?? []).map((c) => [String(c.symbol), String(c.checked_at).slice(0, 10)]));
   for (const symbol of symbols) {
-    const provider = providerFor(symbol, providers);
+    const provider = historyProviderFor(symbol, providers);
     if (!provider?.history) continue;
     const checked = lastCheck.get(symbol);
     if (checked && checked > addDays(today, -OLDER_HISTORY_RETRY_DAYS)) continue;
