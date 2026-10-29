@@ -83,6 +83,9 @@ describe('daily update job', () => {
           { date: '2026-10-26', close: 375.9 },
         ]));
       }
+      if (url.includes('..?')) {
+        return new Response(JSON.stringify({ base: 'GBP', start_date: '2026-10-26', end_date: '2026-10-27', rates: { '2026-10-26': { USD: 1.25 }, '2026-10-27': { USD: 1.28 } } }));
+      }
       return new Response(JSON.stringify({ base: 'GBP', date: '2026-10-27', rates: { USD: 1.25 } }));
     });
   });
@@ -156,6 +159,9 @@ describe('daily update job', () => {
       await runDailyUpdate(fakeDb(t), '2026-10-27');
       expect(calls.some((c) => c.includes('/eod/NVDA.US?'))).toBe(true);
       expect(calls.some((c) => c.includes('finnhub.io'))).toBe(false);
+      // Daily USD rates stored as GBP per dollar.
+      expect(calls.find((c) => c.includes('frankfurter') && c.includes('..?'))).toContain('/2025-10-27..?base=GBP&symbols=USD');
+      expect((t.price_history as Row[]).filter((r) => r.symbol === 'FX:USDGBP').map((r) => r.close)).toEqual([0.78125, 0.8]);
     } finally {
       delete process.env.FINNHUB_API_KEY;
     }

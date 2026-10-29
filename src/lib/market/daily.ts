@@ -4,7 +4,7 @@ import { addDays, todayISO } from '../dates';
 import { normaliseRow, TABLES, type Collection } from '../data/repository';
 import { buildPortfolio } from '../finance/portfolio';
 import type { Dataset, MarketPrice } from '../types';
-import { fetchFxRates } from './fx';
+import { fetchFxHistory, fetchFxRates, fxHistorySymbol } from './fx';
 import { configuredProviders, providerFor, RateLimitError, type DailyClose } from './providers';
 import { getPrices, recordApiCalls } from './service';
 
@@ -160,6 +160,23 @@ export async function runDailyUpdate(db: Db, today = todayISO()): Promise<DailyR
     }
     await db.from('price_history_checks').upsert({ symbol, checked_at: new Date().toISOString(), earliest, result: outcome.slice(0, 200) }, { onConflict: 'symbol' });
     result.olderHistory[symbol] = outcome;
+  }
+
+  // 1c. Daily exchange rates for foreign-currency holdings (free, no allowance),
+  // so their value history can use each day's rate.
+  const currencies = [...new Set([...currencyBySymbol.values()].map((c) => c.toUpperCase()))].filter((c) => c !== 'GBP' && c !== 'GBX');
+  const fxLast = await lastStoredDates(db, currencies.map(fxHistorySymbol));
+  for (const ccy of currencies) {
+    const symbol = fxHistorySymbol(ccy);
+    const lastFx = fxLast.get(symbol);
+    if (lastFx && lastFx >= today) continue;
+    try {
+      const rows = await fetchFxHistory(ccy, lastFx ? addDays(lastFx, 1) : addDays(today, -BACKFILL_DAYS));
+      await storeCloses(db, symbol, rows, 'Frankfurter');
+      result.prices[symbol] = `${rows.length} day(s) stored`;
+    } catch (e) {
+      result.prices[symbol] = e instanceof Error ? e.message : 'failed';
+    }
   }
 
   if (quoteOnly.length) {
